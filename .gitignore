@@ -59,8 +59,7 @@ scripts/
 test/archive/
 
 # Claude Code local settings
-.claude/settings.local.json
-
+.claude
 # Build artifacts
 dist/
 build/
@@ -70,3 +69,6 @@ build/
 tmp/
 temp/
 *.tmp
+MarkDown
+test
+run_parser_tests.sh
