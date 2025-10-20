@@ -6,7 +6,7 @@ PlexLinker is a powerful Go CLI tool that browses authenticated web directories,
 
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/yourusername/plexlinker)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/bbrandlegacy/PlexLinker)
 
 ---
 
@@ -47,13 +47,13 @@ PlexLinker is a powerful Go CLI tool that browses authenticated web directories,
 **Windows:**
 ```powershell
 # Download from releases page
-curl -L https://github.com/yourusername/plexlinker/releases/latest/download/plexlinker.exe -o plexlinker.exe
+curl -L https://github.com/bbrandlegacy/PlexLinker/releases/latest/download/plexlinker.exe -o plexlinker.exe
 ```
 
 **macOS/Linux:**
 ```bash
 # Download from releases page
-curl -L https://github.com/yourusername/plexlinker/releases/latest/download/plexlinker -o plexlinker
+curl -L https://github.com/bbrandlegacy/PlexLinker/releases/latest/download/plexlinker -o plexlinker
 chmod +x plexlinker
 ```
 
@@ -61,8 +61,8 @@ chmod +x plexlinker
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/plexlinker.git
-cd plexlinker
+git clone https://github.com/bbrandlegacy/PlexLinker.git
+cd PlexLinker
 
 # Build for current platform
 go build -o plexlinker ./cmd/plexlinker
@@ -348,9 +348,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📮 Support
 
-- **Issues:** [GitHub Issues](https://github.com/yourusername/plexlinker/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/yourusername/plexlinker/discussions)
-- **Documentation:** [Wiki](https://github.com/yourusername/plexlinker/wiki)
+- **Issues:** [GitHub Issues](https://github.com/bbrandlegacy/PlexLinker/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/bbrandlegacy/PlexLinker/discussions)
+- **Documentation:** [Wiki](https://github.com/bbrandlegacy/PlexLinker/wiki)
 
 ---
 
