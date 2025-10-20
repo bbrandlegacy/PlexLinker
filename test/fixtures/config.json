@@ -1,0 +1,10 @@
+{
+  "base_url": "https://test.example.com/media/",
+  "username": "testuser",
+  "password": "testpass",
+  "script_format": "bat",
+  "debug_mode": false,
+  "movies_path": "W:\\movies",
+  "tv_shows_path": "W:\\shows",
+  "other_path": "W:\\other"
+}

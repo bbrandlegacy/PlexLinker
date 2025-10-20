@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        go-version: ['1.21', '1.22']
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ matrix.go-version }}
+
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Run go vet
+      run: go vet ./...
+
+    - name: Run go fmt
+      run: |
+        if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+          echo "Code is not formatted. Please run 'go fmt ./...'"
+          gofmt -s -l .
+          exit 1
+        fi
+      shell: bash
+      if: runner.os != 'Windows'
+
+    - name: Run go fmt (Windows)
+      run: |
+        $output = gofmt -s -l .
+        if ($output) {
+          Write-Host "Code is not formatted. Please run 'go fmt ./...'"
+          Write-Host $output
+          exit 1
+        }
+      shell: powershell
+      if: runner.os == 'Windows'
+
+    - name: Run tests
+      run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage.out
+        flags: ${{ runner.os }}
+        name: codecov-${{ matrix.os }}-${{ matrix.go-version }}
+      if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.22'
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.22'
+
+    - name: Build for multiple platforms
+      run: |
+        # Build for Windows
+        GOOS=windows GOARCH=amd64 go build -o dist/plexlinker-windows-amd64.exe ./cmd/plexlinker
+
+        # Build for Linux
+        GOOS=linux GOARCH=amd64 go build -o dist/plexlinker-linux-amd64 ./cmd/plexlinker
+
+        # Build for macOS (Intel)
+        GOOS=darwin GOARCH=amd64 go build -o dist/plexlinker-darwin-amd64 ./cmd/plexlinker
+
+        # Build for macOS (Apple Silicon)
+        GOOS=darwin GOARCH=arm64 go build -o dist/plexlinker-darwin-arm64 ./cmd/plexlinker
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: binaries
+        path: dist/*
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.22'
+
+    - name: Run golangci-lint
+      uses: golangci/golangci-lint-action@v4
+      with:
+        version: latest
+        args: --timeout=5m

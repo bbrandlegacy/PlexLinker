@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.22'
+
+    - name: Get version
+      id: get_version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+    - name: Build binaries
+      run: |
+        mkdir -p dist
+
+        # Build for Windows AMD64
+        GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/plexlinker-windows-amd64.exe ./cmd/plexlinker
+
+        # Build for Linux AMD64
+        GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/plexlinker-linux-amd64 ./cmd/plexlinker
+
+        # Build for macOS AMD64 (Intel)
+        GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/plexlinker-darwin-amd64 ./cmd/plexlinker
+
+        # Build for macOS ARM64 (Apple Silicon)
+        GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/plexlinker-darwin-arm64 ./cmd/plexlinker
+
+    - name: Create checksums
+      run: |
+        cd dist
+        sha256sum * > checksums.txt
+
+    - name: Generate changelog
+      id: changelog
+      run: |
+        # Extract changelog for this version from CHANGELOG.md
+        if [ -f CHANGELOG.md ]; then
+          # Get content between this version and previous version/unreleased
+          sed -n "/## \[${GITHUB_REF#refs/tags/v}\]/,/## \[/p" CHANGELOG.md | sed '$d' > release_notes.md
+        else
+          echo "See CHANGELOG.md for details" > release_notes.md
+        fi
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          dist/plexlinker-windows-amd64.exe
+          dist/plexlinker-linux-amd64
+          dist/plexlinker-darwin-amd64
+          dist/plexlinker-darwin-arm64
+          dist/checksums.txt
+        body_path: release_notes.md
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-binaries
+        path: dist/*

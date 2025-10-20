@@ -1,0 +1,72 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/plexlinker
+/plexlinker-*
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+*.prof
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+go.work.sum
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.fleet/
+*.iml
+
+# macOS specific
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux specific
+.directory
+.Trash-*
+
+# Windows specific
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# PlexLinker specific - Runtime files
+plexlinker.json
+plexlinker_debug.log
+plexlinker_launcher.bat
+
+# PlexLinker specific - Generated scripts
+plexhelper_*.bat
+plexhelper_*.sh
+plexhelper_*.txt
+scripts/
+
+# PlexLinker specific - Test archives
+test/archive/
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Build artifacts
+dist/
+build/
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
