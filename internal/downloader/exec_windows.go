@@ -49,8 +49,9 @@ func (sg *ScriptGenerator) executeViaTaskScheduler(scriptPath string, username s
 	// Pass task name via environment variable for self-cleanup
 	taskAction := fmt.Sprintf(`powershell.exe -NoExit -WindowStyle Normal -ExecutionPolicy Bypass -Command "$env:PLEXLINKER_TASK_NAME='%s'; & '%s'"`, taskName, scriptPath)
 
-	// Calculate start time (1 minute from now) for immediate execution
-	startTime := time.Now().Add(1 * time.Minute)
+	// Calculate start time (5 seconds from now) for immediate execution
+	// Using a very short delay to ensure task is registered before attempting to run
+	startTime := time.Now().Add(5 * time.Second)
 	startDate := startTime.Format("01/02/2006")
 	startClock := startTime.Format("15:04")
 
@@ -82,22 +83,9 @@ func (sg *ScriptGenerator) executeViaTaskScheduler(scriptPath string, username s
 	logger.Get().Main().Printf("[TASK SCHEDULER] Task created successfully")
 	logger.Get().Main().Printf("[TASK SCHEDULER] Output: %s", string(output))
 
-	// Wait a moment for Task Scheduler to fully register the task
-	time.Sleep(200 * time.Millisecond)
-
-	// Run the task immediately (overrides the scheduled time)
-	logger.Get().Main().Printf("[TASK SCHEDULER] Running task: %s", taskName)
-	runCmd := exec.Command("schtasks", "/run", "/tn", taskName)
-	output, err = runCmd.CombinedOutput()
-	if err != nil {
-		logger.Get().Main().Printf("[TASK SCHEDULER] Run FAILED: %v", err)
-		logger.Get().Main().Printf("[TASK SCHEDULER] Output: %s", string(output))
-		// Cleanup - delete the task we just created
-		exec.Command("schtasks", "/delete", "/tn", taskName, "/f").Run()
-		return nil, fmt.Errorf("task execution failed: %v (output: %s)", err, string(output))
-	}
-	logger.Get().Main().Printf("[TASK SCHEDULER] Task running successfully")
-	logger.Get().Main().Printf("[TASK SCHEDULER] Output: %s", string(output))
+	// Task is scheduled to run in 5 seconds - no need to manually trigger with /run
+	// The /run command was causing duplicate executions because the scheduled time would still trigger
+	logger.Get().Main().Printf("[TASK SCHEDULER] Task scheduled to run at %s", startTime.Format("15:04:05"))
 
 	execution := &ScriptExecution{
 		ScriptPath:      scriptPath,
