@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -35,11 +36,14 @@ func TestSaveAndLoadV2Config(t *testing.T) {
 	if loaded.BaseURL != cfg.BaseURL || len(loaded.FavoritePaths) != 2 {
 		t.Fatalf("loaded = %#v", loaded)
 	}
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm()&0o077 != 0 {
-		t.Fatalf("config mode = %o", info.Mode().Perm())
+	// Windows does not represent ACLs through Unix permission bits.
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm()&0o077 != 0 {
+			t.Fatalf("config mode = %o", info.Mode().Perm())
+		}
 	}
 }
