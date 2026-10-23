@@ -13,6 +13,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"plexlinker/internal/browser"
 	"plexlinker/internal/config"
 	"plexlinker/internal/downloads"
@@ -686,7 +687,9 @@ func (m *Model) View() tea.View {
 
 func (m *Model) viewRemote(b *strings.Builder) {
 	b.WriteString("Remote: " + displayPath(m.remotePath) + fmt.Sprintf("  (%d selected)\n", len(m.selected)))
-	for i, item := range m.remoteItems {
+	start, end := m.visibleRange(m.remoteCursor, len(m.remoteItems))
+	for i := start; i < end; i++ {
+		item := m.remoteItems[i]
 		marker := "  "
 		if _, ok := m.selected[m.services.Remote.FullURL(item.Path)]; ok {
 			marker = good.Render("✓ ")
@@ -697,6 +700,7 @@ func (m *Model) viewRemote(b *strings.Builder) {
 		}
 		m.row(b, i == m.remoteCursor, marker+icon+" "+item.Name)
 	}
+	m.scrollHint(b, start, end, len(m.remoteItems))
 }
 func (m *Model) viewSelection(b *strings.Builder) {
 	b.WriteString(fmt.Sprintf("Selection: %d files\n", len(m.selected)))
@@ -705,14 +709,18 @@ func (m *Model) viewSelection(b *strings.Builder) {
 		files = append(files, f)
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
-	for _, file := range files {
+	_, end := m.visibleRange(0, len(files))
+	for _, file := range files[:end] {
 		b.WriteString("  " + file.Name + "\n")
 	}
+	m.scrollHint(b, 0, end, len(files))
 }
 func (m *Model) viewDestination(b *strings.Builder) {
 	if m.destinationPath == "" {
 		b.WriteString("Choose a drive or mount\n")
-		for i, v := range m.volumes {
+		start, end := m.visibleRange(m.destinationCursor, len(m.volumes))
+		for i := start; i < end; i++ {
+			v := m.volumes[i]
 			label := v.Path
 			if v.Label != "" {
 				label += "  " + v.Label
@@ -720,6 +728,7 @@ func (m *Model) viewDestination(b *strings.Builder) {
 			label += fmt.Sprintf("  %s free", formatBytes(v.FreeBytes))
 			m.row(b, i == m.destinationCursor, label)
 		}
+		m.scrollHint(b, start, end, len(m.volumes))
 		if m.destinationPrompt != "" {
 			b.WriteString("\n" + accent.Render(m.destinationPrompt) + "\n  " + m.destinationInput.View() + "\n")
 		} else {
@@ -728,11 +737,14 @@ func (m *Model) viewDestination(b *strings.Builder) {
 		return
 	}
 	b.WriteString("Destination: " + good.Render(m.destinationPath) + "\n")
-	for i, e := range m.destinationEntries {
+	start, end := m.visibleRange(m.destinationCursor, len(m.destinationEntries))
+	for i := start; i < end; i++ {
+		e := m.destinationEntries[i]
 		if e.IsDir {
 			m.row(b, i == m.destinationCursor, "▸ "+e.Name)
 		}
 	}
+	m.scrollHint(b, start, end, len(m.destinationEntries))
 	if m.destinationPrompt != "" {
 		b.WriteString("\n" + accent.Render(m.destinationPrompt) + "\n  " + m.destinationInput.View() + "\n")
 	} else {
@@ -741,10 +753,13 @@ func (m *Model) viewDestination(b *strings.Builder) {
 }
 func (m *Model) viewDownloads(b *strings.Builder) {
 	b.WriteString(fmt.Sprintf("aria2 jobs: %d\n", len(m.jobs)))
-	for i, j := range m.jobs {
+	start, end := m.visibleRange(m.downloadCursor, len(m.jobs))
+	for i := start; i < end; i++ {
+		j := m.jobs[i]
 		text := fmt.Sprintf("%-9s %s %5.1f%% %8s/s  %s", j.State, m.progress.ViewAs(j.Progress()), j.Progress()*100, formatBytes(j.BytesPerSecond), j.Name)
 		m.row(b, i == m.downloadCursor, text)
 	}
+	m.scrollHint(b, start, end, len(m.jobs))
 }
 func (m *Model) viewSettings(b *strings.Builder) {
 	b.WriteString("Settings\n")
@@ -758,8 +773,8 @@ func (m *Model) viewSettings(b *strings.Builder) {
 }
 func (m *Model) row(b *strings.Builder, active bool, text string) {
 	limit := m.width - 2
-	if limit > 3 && len(text) > limit {
-		text = text[:limit-1] + "…"
+	if limit > 3 {
+		text = ansi.Truncate(text, limit, "…")
 	}
 	if active {
 		b.WriteString(selectedStyle.Render(text))
@@ -767,6 +782,28 @@ func (m *Model) row(b *strings.Builder, active bool, text string) {
 		b.WriteString(text)
 	}
 	b.WriteString("\n")
+}
+func (m *Model) visibleRange(cursor, length int) (int, int) {
+	limit := max(5, m.height-8)
+	if m.height == 0 {
+		limit = 20
+	}
+	if length <= limit {
+		return 0, length
+	}
+	start := cursor - limit/2
+	if start < 0 {
+		start = 0
+	}
+	if start+limit > length {
+		start = length - limit
+	}
+	return start, start + limit
+}
+func (m *Model) scrollHint(b *strings.Builder, start, end, total int) {
+	if total > end-start {
+		b.WriteString(muted.Render(fmt.Sprintf("  showing %d–%d of %d", start+1, end, total)) + "\n")
+	}
 }
 func displayPath(path string) string {
 	if path == "" {

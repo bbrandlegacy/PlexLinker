@@ -141,3 +141,13 @@ func TestRecursiveSelection(t *testing.T) {
 		t.Fatalf("selected = %#v", model.selected)
 	}
 }
+
+func TestVisibleRangeFollowsCursor(t *testing.T) {
+	t.Parallel()
+	model, _ := testModel()
+	model.height = 13 // five content rows
+	start, end := model.visibleRange(8, 10)
+	if start != 5 || end != 10 {
+		t.Fatalf("range = %d:%d", start, end)
+	}
+}
