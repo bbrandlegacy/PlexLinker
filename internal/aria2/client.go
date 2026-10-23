@@ -30,7 +30,7 @@ func NewClient(endpoint, secret string, options ...Option) *Client {
 		endpoint: endpoint,
 		secret:   secret,
 		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout: 5 * time.Second,
 		},
 	}
 	for _, option := range options {

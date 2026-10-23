@@ -23,6 +23,8 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Changed
 
+- Switch directly to Downloads after at least one selected item is accepted by
+  aria2.
 - Made `a` toggle all files in the current browser directory and added an
   explicit `Shift+D` override for destination write-preflight failures.
 - Reworked v2 navigation around Browser, Selection, Downloads, TV Renamer, and
@@ -38,6 +40,8 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Bound and serialize aria2 status polling, and restart an unresponsive
+  Task Scheduler-managed aria2 process during Windows startup recovery.
 - Canonicalized doubled Windows drive and UNC separators from migrated or
   manually entered destinations before displaying or submitting downloads.
 - Expanded case-insensitive video and audio discovery and recover full media

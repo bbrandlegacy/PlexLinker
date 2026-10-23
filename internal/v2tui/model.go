@@ -69,6 +69,7 @@ type Model struct {
 	pickerSelectionURL string
 	jobs               []downloads.Job
 	downloadCursor     int
+	jobsLoading        bool
 	progress           progress.Model
 	settingsInputs     []textinput.Model
 	settingsCursor     int
@@ -194,6 +195,7 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = "Browsing " + msg.path
 		}
 	case jobsLoadedMsg:
+		m.jobsLoading = false
 		if msg.err != nil {
 			m.status = "aria2 unavailable: " + msg.err.Error()
 		} else {
@@ -201,6 +203,9 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case submittedMsg:
 		m.loading = false
+		if msg.count > 0 {
+			m.tab = TabDownloads
+		}
 		if msg.err != nil {
 			if msg.preflight {
 				m.status = "Download not started: " + msg.err.Error() + " • Shift+D to submit anyway"
@@ -719,8 +724,16 @@ func (m *Model) submitSelectedWithPreflight(checkWritable bool) tea.Cmd {
 				}
 			}
 		}
-		results, err := m.services.Downloads.Submit(context.Background(), requests)
-		return submittedMsg{count: len(results), err: err}
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		results, err := m.services.Downloads.Submit(ctx, requests)
+		submitted := 0
+		for _, result := range results {
+			if result.Error == nil && result.GID != "" {
+				submitted++
+			}
+		}
+		return submittedMsg{count: submitted, err: err}
 	}
 }
 
@@ -808,12 +821,18 @@ func (m *Model) loadDirectory(path string) tea.Cmd {
 	}
 }
 func (m *Model) loadJobs() tea.Cmd {
+	if m.jobsLoading {
+		return nil
+	}
+	m.jobsLoading = true
 	return func() tea.Msg {
-		jobs, err := m.services.Downloads.Snapshot(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		jobs, err := m.services.Downloads.Snapshot(ctx)
 		return jobsLoadedMsg{jobs, err}
 	}
 }
-func tick() tea.Cmd { return tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return tickMsg(t) }) }
+func tick() tea.Cmd { return tea.Tick(5*time.Second, func(t time.Time) tea.Msg { return tickMsg(t) }) }
 
 const (
 	settingBaseURL = iota

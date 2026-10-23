@@ -16,6 +16,10 @@ func startPlatform(ctx context.Context, executable, configPath string) error {
 		return fmt.Errorf("aria2c.exe is not installed or not on PATH: %w", err)
 	}
 	action := fmt.Sprintf(`"%s" --conf-path="%s"`, path, configPath)
+	// Stop an existing scheduled instance before replacing it. This recovers a
+	// process that still owns the RPC port but has stopped answering requests.
+	// A missing or already-stopped task is expected on first launch.
+	_ = exec.CommandContext(ctx, "schtasks", "/end", "/tn", aria2TaskName).Run()
 	create := exec.CommandContext(ctx, "schtasks", "/create", "/tn", aria2TaskName, "/tr", action, "/sc", "ONLOGON", "/rl", "LIMITED", "/f")
 	if output, err := create.CombinedOutput(); err != nil {
 		return fmt.Errorf("register persistent aria2 task: %w (%s)", err, output)

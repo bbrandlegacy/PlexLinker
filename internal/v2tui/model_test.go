@@ -104,6 +104,9 @@ func TestSelectDestinationAndSubmit(t *testing.T) {
 	if len(model.selected) != 0 {
 		t.Fatalf("selection was not cleared: %#v", model.selected)
 	}
+	if model.tab != TabDownloads {
+		t.Fatalf("tab = %v, want downloads", model.tab)
+	}
 }
 
 func TestDestinationViewFiltersFiles(t *testing.T) {
