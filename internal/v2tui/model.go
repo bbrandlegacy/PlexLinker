@@ -45,6 +45,8 @@ type Model struct {
 	destinationPath    string
 	destinationEntries []storage.Entry
 	destinationCursor  int
+	destinationInput   textinput.Model
+	destinationPrompt  string
 	jobs               []downloads.Job
 	downloadCursor     int
 	progress           progress.Model
@@ -55,6 +57,10 @@ type Model struct {
 type remoteLoadedMsg struct {
 	listing *browser.DirectoryListing
 	err     error
+}
+type recursiveSelectedMsg struct {
+	files []selectedFile
+	err   error
 }
 type volumesLoadedMsg struct {
 	volumes []storage.Volume
@@ -85,6 +91,9 @@ func New(services Services) *Model {
 		status = "Connecting…"
 	}
 	m := &Model{services: services, selected: make(map[string]selectedFile), status: status, loading: true, progress: progress.New(progress.WithDefaultBlend(), progress.WithoutPercentage())}
+	m.destinationInput = textinput.New()
+	m.destinationInput.SetWidth(70)
+	m.destinationInput.Prompt = ""
 	m.initializeSettings()
 	return m
 }
@@ -99,6 +108,9 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.progress.SetWidth(max(8, min(28, msg.Width/4)))
 	case tea.KeyPressMsg:
+		if m.tab == TabDestination && m.destinationPrompt != "" {
+			return m.handleDestinationPrompt(msg)
+		}
 		if m.tab == TabSettings {
 			return m.handleSettingsKey(msg)
 		}
@@ -111,11 +123,35 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.remotePath, m.remoteItems, m.remoteCursor = msg.listing.CurrentPath, msg.listing.Items, 0
 			m.status = fmt.Sprintf("Loaded %d remote items", len(m.remoteItems))
 		}
+	case recursiveSelectedMsg:
+		m.loading = false
+		for _, file := range msg.files {
+			m.selected[file.URL] = file
+		}
+		if msg.err != nil {
+			m.status = fmt.Sprintf("Recursive scan selected %d files with errors: %v", len(msg.files), msg.err)
+		} else {
+			m.status = fmt.Sprintf("Recursively selected %d files", len(msg.files))
+		}
 	case volumesLoadedMsg:
 		if msg.err != nil {
 			m.status = "Volume error: " + msg.err.Error()
 		} else {
 			m.volumes = msg.volumes
+			if m.services.Config != nil {
+				for _, favorite := range m.services.Config.FavoritePaths {
+					found := false
+					for _, volume := range m.volumes {
+						if volume.Path == favorite {
+							found = true
+							break
+						}
+					}
+					if !found {
+						m.volumes = append([]storage.Volume{{Path: favorite, Label: "Favorite", Kind: storage.VolumeNetwork, Available: true}}, m.volumes...)
+					}
+				}
+			}
 		}
 	case directoryLoadedMsg:
 		if msg.err != nil {
@@ -188,11 +224,31 @@ func (m *Model) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, m.back()
 	case "a":
 		m.selectAll()
+	case "s":
+		if m.tab == TabRemote {
+			m.loading = true
+			m.status = "Scanning remote directories…"
+			return m, m.selectRecursive(m.remotePath)
+		}
 	case "c":
 		m.selected = make(map[string]selectedFile)
 		m.status = "Selection cleared"
 	case "d":
 		return m, m.submitSelected()
+	case "g":
+		if m.tab == TabDestination {
+			m.openDestinationPrompt("go to path", m.destinationPath)
+			return m, nil
+		}
+	case "n":
+		if m.tab == TabDestination {
+			m.openDestinationPrompt("create directory", m.destinationPath)
+			return m, nil
+		}
+	case "f":
+		if m.tab == TabDestination {
+			return m, m.favoriteDestination()
+		}
 	case "r":
 		if m.tab == TabRemote {
 			return m, m.loadRemote(m.remotePath)
@@ -289,6 +345,66 @@ func (m *Model) back() tea.Cmd {
 	return nil
 }
 
+func (m *Model) openDestinationPrompt(mode, value string) {
+	m.destinationPrompt = mode
+	m.destinationInput.SetValue(value)
+	m.destinationInput.CursorEnd()
+	m.destinationInput.Focus()
+}
+
+func (m *Model) handleDestinationPrompt(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch key.String() {
+	case "esc":
+		m.destinationPrompt = ""
+		m.destinationInput.Blur()
+		return m, nil
+	case "enter":
+		path, mode := strings.TrimSpace(m.destinationInput.Value()), m.destinationPrompt
+		m.destinationPrompt = ""
+		m.destinationInput.Blur()
+		if path == "" {
+			m.status = "Destination path cannot be empty"
+			return m, nil
+		}
+		if mode == "create directory" {
+			return m, func() tea.Msg {
+				if err := m.services.Directories.CreateDirectory(path); err != nil {
+					return directoryLoadedMsg{path: path, err: err}
+				}
+				entries, err := m.services.Directories.List(context.Background(), path)
+				return directoryLoadedMsg{path: path, entries: entries, err: err}
+			}
+		}
+		return m, m.loadDirectory(path)
+	}
+	var command tea.Cmd
+	m.destinationInput, command = m.destinationInput.Update(key)
+	return m, command
+}
+
+func (m *Model) favoriteDestination() tea.Cmd {
+	if m.destinationPath == "" {
+		m.status = "Browse to a destination before adding a favorite"
+		return nil
+	}
+	return func() tea.Msg {
+		cfg := m.services.Config
+		if cfg == nil || m.services.SaveConfig == nil {
+			return actionMsg{err: fmt.Errorf("configuration saving is unavailable")}
+		}
+		for _, path := range cfg.FavoritePaths {
+			if path == m.destinationPath {
+				return actionMsg{message: "Destination is already a favorite"}
+			}
+		}
+		cfg.FavoritePaths = append(cfg.FavoritePaths, m.destinationPath)
+		if err := m.services.SaveConfig(cfg); err != nil {
+			return actionMsg{err: err}
+		}
+		return actionMsg{message: "Added destination favorite " + m.destinationPath}
+	}
+}
+
 func (m *Model) selectAll() {
 	if m.tab != TabRemote {
 		return
@@ -300,6 +416,39 @@ func (m *Model) selectAll() {
 		}
 	}
 	m.status = fmt.Sprintf("Selected %d files", len(m.selected))
+}
+
+func (m *Model) selectRecursive(root string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		queue := []string{root}
+		visited := make(map[string]bool)
+		files := make([]selectedFile, 0)
+		for len(queue) > 0 {
+			path := queue[0]
+			queue = queue[1:]
+			if visited[path] {
+				continue
+			}
+			visited[path] = true
+			if len(visited) > 10000 {
+				return recursiveSelectedMsg{files: files, err: fmt.Errorf("scan stopped after 10,000 directories")}
+			}
+			listing, err := m.services.Remote.List(ctx, path)
+			if err != nil {
+				return recursiveSelectedMsg{files: files, err: fmt.Errorf("scan %q: %w", path, err)}
+			}
+			for _, item := range listing.Items {
+				if item.Type == browser.TypeDirectory {
+					queue = append(queue, item.Path)
+					continue
+				}
+				files = append(files, selectedFile{URL: m.services.Remote.FullURL(item.Path), Name: item.Name})
+			}
+		}
+		return recursiveSelectedMsg{files: files}
+	}
 }
 
 func (m *Model) submitSelected() tea.Cmd {
@@ -319,6 +468,9 @@ func (m *Model) submitSelected() tea.Cmd {
 	sort.Slice(requests, func(i, j int) bool { return requests[i].URL < requests[j].URL })
 	m.loading = true
 	return func() tea.Msg {
+		if err := m.services.Directories.IsWritable(m.destinationPath); err != nil {
+			return submittedMsg{err: err}
+		}
 		results, err := m.services.Downloads.Submit(context.Background(), requests)
 		return submittedMsg{count: len(results), err: err}
 	}
@@ -508,7 +660,7 @@ func (m *Model) View() tea.View {
 	if m.tab == TabSettings {
 		b.WriteString(muted.Render("Tab/↑/↓ fields • Ctrl+S save • Esc return"))
 	} else {
-		b.WriteString(muted.Render("Tab switch • ↑/↓ navigate • Enter select/open • d queue • q quit"))
+		b.WriteString(muted.Render("Tab switch • ↑/↓ navigate • Enter select/open • a current • s recursive • d queue • q quit"))
 	}
 	view := tea.NewView(b.String())
 	view.AltScreen = true
@@ -551,6 +703,11 @@ func (m *Model) viewDestination(b *strings.Builder) {
 			label += fmt.Sprintf("  %s free", formatBytes(v.FreeBytes))
 			m.row(b, i == m.destinationCursor, label)
 		}
+		if m.destinationPrompt != "" {
+			b.WriteString("\n" + accent.Render(m.destinationPrompt) + "\n  " + m.destinationInput.View() + "\n")
+		} else {
+			b.WriteString("\n" + muted.Render("g go to path/UNC") + "\n")
+		}
 		return
 	}
 	b.WriteString("Destination: " + good.Render(m.destinationPath) + "\n")
@@ -558,6 +715,11 @@ func (m *Model) viewDestination(b *strings.Builder) {
 		if e.IsDir {
 			m.row(b, i == m.destinationCursor, "▸ "+e.Name)
 		}
+	}
+	if m.destinationPrompt != "" {
+		b.WriteString("\n" + accent.Render(m.destinationPrompt) + "\n  " + m.destinationInput.View() + "\n")
+	} else {
+		b.WriteString("\n" + muted.Render("g go to path/UNC • n create directory • f favorite current destination") + "\n")
 	}
 }
 func (m *Model) viewDownloads(b *strings.Builder) {
