@@ -153,10 +153,32 @@ jobs:
           Get-Process aria2c -ErrorAction SilentlyContinue | Stop-Process -Force
         }
 
+  linux-acceptance:
+    name: Linux aria2 persistence acceptance
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7
+
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: true
+
+    - name: Install aria2
+      run: |
+        sudo apt-get update
+        sudo apt-get install --yes aria2
+
+    - name: Exercise managed RPC reconnection and a real transfer
+      run: PLEXLINKER_INTEGRATION=1 go test -count=1 -run TestManagedAria2DownloadIntegration -v ./internal/aria2manager
+
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [test, windows-acceptance]
+    needs: [test, windows-acceptance, linux-acceptance]
 
     steps:
     - name: Checkout code

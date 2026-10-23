@@ -1,15 +1,9 @@
-//go:build !windows
+//go:build !windows && !linux
 
 package main
 
-import (
-	"context"
-	"runtime"
-)
+import "context"
 
 func persistenceProbe(context.Context) (string, error) {
-	if runtime.GOOS == "linux" {
-		return "aria2 is managed by systemd-user when available, otherwise daemon mode", nil
-	}
 	return "aria2 is running in daemon mode", nil
 }

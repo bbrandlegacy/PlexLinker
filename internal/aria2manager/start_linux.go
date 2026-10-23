@@ -49,8 +49,13 @@ func startSystemdUserService(ctx context.Context, systemctl, executable, configP
 	if output, err := exec.CommandContext(ctx, systemctl, "--user", "daemon-reload").CombinedOutput(); err != nil {
 		return fmt.Errorf("systemd daemon-reload: %w (%s)", err, output)
 	}
-	if output, err := exec.CommandContext(ctx, systemctl, "--user", "enable", "--now", "plexlinker-aria2.service").CombinedOutput(); err != nil {
+	if output, err := exec.CommandContext(ctx, systemctl, "--user", "enable", "plexlinker-aria2.service").CombinedOutput(); err != nil {
 		return fmt.Errorf("enable aria2 user service: %w (%s)", err, output)
+	}
+	// Restart rather than merely starting the unit so a process that owns the
+	// RPC port but no longer responds is recovered on the next PlexLinker run.
+	if output, err := exec.CommandContext(ctx, systemctl, "--user", "restart", "plexlinker-aria2.service").CombinedOutput(); err != nil {
+		return fmt.Errorf("restart aria2 user service: %w (%s)", err, output)
 	}
 	return nil
 }

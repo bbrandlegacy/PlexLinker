@@ -42,6 +42,8 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Restart an unresponsive Linux systemd-user aria2 service and add native Linux
+  persistence/download acceptance coverage.
 - Bound and serialize aria2 status polling, and restart an unresponsive
   Task Scheduler-managed aria2 process during Windows startup recovery.
 - Canonicalized doubled Windows drive and UNC separators from migrated or

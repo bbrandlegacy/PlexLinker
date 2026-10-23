@@ -141,6 +141,14 @@ Environment overrides for unattended use are `PLEX_BASE_URL`, `PLEX_USERNAME`,
 
 ## Linux persistence
 
+Install aria2, install the PlexLinker binary, and make it available globally:
+
+```bash
+sudo apt-get install aria2
+sudo install -m 0755 plexlinker-linux-amd64 /usr/local/bin/plexlinker
+plexlinker --version
+```
+
 When a systemd user session is available, PlexLinker installs and enables
 `plexlinker-aria2.service`. Otherwise, it starts aria2's native daemon mode.
 For service survival without any logged-in user, enable lingering once:
@@ -148,6 +156,17 @@ For service survival without any logged-in user, enable lingering once:
 ```bash
 loginctl enable-linger "$USER"
 ```
+
+Validate the real destination and remote connection as the same Linux account
+used over SSH:
+
+```bash
+plexlinker doctor --destination /srv/media/shows
+systemctl --user status plexlinker-aria2.service
+```
+
+Queue a test download, disconnect SSH, reconnect, and open Downloads with `3`.
+The download must continue while the SSH session is absent.
 
 ## Verification
 

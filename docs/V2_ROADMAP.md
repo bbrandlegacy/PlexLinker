@@ -3,10 +3,9 @@
 `main` remains the v1 release line. All v2 work is developed and verified on
 `v2-development`; merging to `main` requires the owner's explicit approval.
 
-Status: implementation and automated acceptance are complete. The remaining
-release gate is the target-host SSH disconnect test using the real VPN account
-and mapped-drive or UNC destination. No merge or release occurs before owner
-approval.
+Status: Windows implementation and target-host acceptance are complete. Linux
+hardening and native persistence acceptance are now in progress. No merge or
+release occurs before owner approval.
 
 ## Stage 0 — Preserve and stabilize
 
