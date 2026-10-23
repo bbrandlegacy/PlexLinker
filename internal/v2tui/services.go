@@ -29,7 +29,7 @@ func (r *remoteClient) List(ctx context.Context, path string) (*browser.Director
 		return nil, ctx.Err()
 	default:
 	}
-	html, err := r.client.FetchDirectory(path)
+	html, err := r.client.FetchDirectoryContext(ctx, path)
 	if err != nil {
 		return nil, err
 	}
