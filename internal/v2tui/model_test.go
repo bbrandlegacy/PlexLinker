@@ -312,6 +312,21 @@ func TestSettingsPathEnterOpensPickerAndCommitUpdatesField(t *testing.T) {
 	}
 }
 
+func TestSettingsEscapeReturnsToPreviousView(t *testing.T) {
+	t.Parallel()
+	model, _ := testModel()
+	model.tab = TabDownloads
+
+	model.handleKey(tea.KeyPressMsg(tea.Key{Text: "5", Code: '5'}))
+	if model.tab != TabSettings {
+		t.Fatalf("tab = %v, want settings", model.tab)
+	}
+	model.handleSettingsKey(tea.KeyPressMsg(tea.Key{Code: tea.KeyEsc}))
+	if model.tab != TabDownloads {
+		t.Fatalf("tab = %v, want previous downloads view", model.tab)
+	}
+}
+
 func TestBrowserArrowNavigation(t *testing.T) {
 	t.Parallel()
 	model, _ := testModel()

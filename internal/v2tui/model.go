@@ -73,6 +73,7 @@ type Model struct {
 	progress           progress.Model
 	settingsInputs     []textinput.Model
 	settingsCursor     int
+	settingsReturnTab  Tab
 }
 
 type remoteLoadedMsg struct {
@@ -255,10 +256,15 @@ func (m *Model) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return actionMsg{message: "Returned from TV renamer"}
 		})
 	case "5":
+		m.settingsReturnTab = m.tab
 		m.tab = TabSettings
 		m.focusSetting(0)
 	case "tab":
-		m.tab = (m.tab + 1) % 4
+		next := (m.tab + 1) % 4
+		if next == TabSettings {
+			m.settingsReturnTab = m.tab
+		}
+		m.tab = next
 	case "shift+tab":
 		m.tab = (m.tab + 3) % 4
 	case "up", "k":
@@ -886,7 +892,10 @@ func (m *Model) handleSettingsKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		for i := range m.settingsInputs {
 			m.settingsInputs[i].Blur()
 		}
-		m.tab = TabRemote
+		m.tab = m.settingsReturnTab
+		if m.tab == TabSettings {
+			m.tab = TabRemote
+		}
 		return m, nil
 	case "tab", "down":
 		m.focusSetting(m.settingsCursor + 1)

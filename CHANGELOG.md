@@ -25,6 +25,8 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 - Switch directly to Downloads after at least one selected item is accepted by
   aria2.
+- Return from Settings to the view that opened it instead of always returning
+  to Browser.
 - Made `a` toggle all files in the current browser directory and added an
   explicit `Shift+D` override for destination write-preflight failures.
 - Reworked v2 navigation around Browser, Selection, Downloads, TV Renamer, and
