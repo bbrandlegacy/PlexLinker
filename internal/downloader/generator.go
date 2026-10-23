@@ -105,9 +105,10 @@ func (sg *ScriptGenerator) buildBatchScript(command string) string {
 	script += "$ErrorActionPreference = 'Continue'\n\n"
 
 	// Add cd command based on media type
-	if sg.mediaType == "movies" {
+	switch sg.mediaType {
+	case "movies":
 		script += fmt.Sprintf("Set-Location -Path '%s'\n", paths.WindowsMoviesPath)
-	} else if sg.mediaType == "shows" {
+	case "shows":
 		if sg.showName != "" {
 			// Escape single quotes for PowerShell
 			escapedName := strings.ReplaceAll(sg.showName, "'", "''")
@@ -131,9 +132,10 @@ func (sg *ScriptGenerator) buildShellScript(command string) string {
 	script += fmt.Sprintf("# Generated on: %s\n\n", time.Now().Format("2006-01-02 15:04:05"))
 
 	// Add cd command based on media type (for Windows paths in Git Bash/WSL)
-	if sg.mediaType == "movies" {
+	switch sg.mediaType {
+	case "movies":
 		script += fmt.Sprintf("cd %s\n", paths.UnixMoviesPath)
-	} else if sg.mediaType == "shows" {
+	case "shows":
 		if sg.showName != "" {
 			// Escape single quotes and backslashes for bash
 			escapedName := strings.ReplaceAll(sg.showName, "'", "'\\''")
@@ -535,7 +537,7 @@ func CleanupOldScripts() error {
 	if deletedCount > 0 {
 		remainingEntries, _ := os.ReadDir(scriptDir)
 		if len(remainingEntries) == 0 {
-			os.Remove(scriptDir)
+			_ = os.Remove(scriptDir)
 		}
 	}
 

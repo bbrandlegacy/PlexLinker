@@ -23,10 +23,10 @@ type ScriptGeneratorState struct {
 	categorized   *downloader.CategorizedFiles
 	selectedFiles []string // Full URLs
 	mode          GeneratorMode
-	tvShowPath    string   // Selected path for TV shows
+	tvShowPath    string // Selected path for TV shows
 	statusMessage string
 	baseURL       string
-	currentUser   string   // Current username for task naming
+	currentUser   string // Current username for task naming
 }
 
 type ScriptGeneratorUI struct {
@@ -119,7 +119,6 @@ func (ui *ScriptGeneratorUI) browseTVPath() {
 	}
 }
 
-
 func (ui *ScriptGeneratorUI) generateAndRun(executeScripts bool) error {
 	state := ui.state
 
@@ -163,8 +162,6 @@ func (ui *ScriptGeneratorUI) generateAndRun(executeScripts bool) error {
 	successCount := 0
 	taskSchedulerCount := 0
 	fallbackCount := 0
-	var executions []*downloader.ScriptExecution
-
 	for _, scriptPath := range scriptPaths {
 		if scriptPath == "" {
 			continue
@@ -178,8 +175,6 @@ func (ui *ScriptGeneratorUI) generateAndRun(executeScripts bool) error {
 			// Continue executing other scripts even if one fails
 		} else {
 			successCount++
-			executions = append(executions, execution)
-
 			// Track execution method
 			if execution.ExecutionMethod == "task_scheduler" {
 				taskSchedulerCount++

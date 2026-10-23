@@ -1,0 +1,46 @@
+name: Security
+
+on:
+  push:
+    branches: [main, v2-development]
+  pull_request:
+    branches: [main, v2-development]
+  schedule:
+    - cron: "23 8 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Review dependency changes when GitHub supports it
+        id: dependency-review
+        continue-on-error: true
+        uses: actions/dependency-review-action@v4
+      - name: Report unavailable dependency review
+        if: steps.dependency-review.outcome == 'failure'
+        run: |
+          echo "::warning::GitHub Dependency Review is unavailable for this private repository plan; govulncheck and Dependabot remain enforced."
+          echo "### Dependency Review unavailable" >> "$GITHUB_STEP_SUMMARY"
+          echo "GitHub Advanced Security is not enabled for this private repository. The govulncheck job and Dependabot remain active." >> "$GITHUB_STEP_SUMMARY"
+
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...

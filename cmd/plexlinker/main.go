@@ -64,7 +64,7 @@ func run() error {
 		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
 		os.Exit(1)
 	}
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 
 	log = logger.Get()
 	log.Main().Println("=== PlexLinker Debug Mode Started ===")

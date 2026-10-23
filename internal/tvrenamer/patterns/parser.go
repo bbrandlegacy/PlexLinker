@@ -9,20 +9,20 @@ import (
 )
 
 type TVShowInfo struct {
-	ShowName      string
-	Season        int
-	Episode       int
-	EpisodeEnd    int // For multi-episode files (S01E01-E02)
-	EpisodeTitle  string
-	Year          string
-	Quality       string
-	AudioInfo     string
-	VideoCodec    string
-	ReleaseGroup  string
-	Region        string
-	Extension     string
-	OriginalName  string
-	IsSpecial     bool
+	ShowName     string
+	Season       int
+	Episode      int
+	EpisodeEnd   int // For multi-episode files (S01E01-E02)
+	EpisodeTitle string
+	Year         string
+	Quality      string
+	AudioInfo    string
+	VideoCodec   string
+	ReleaseGroup string
+	Region       string
+	Extension    string
+	OriginalName string
+	IsSpecial    bool
 }
 
 type PatternMatcher struct {
@@ -46,7 +46,7 @@ func (pm *PatternMatcher) initializePatterns() {
 		// Standard format: Show.Name.S01E01.Episode.Title.1080p.x264-GROUP.mkv
 		{
 			Name:    "Standard SxxExx",
-			Pattern: regexp.MustCompile(`(?i)^(.+?)[.\s_-]+[Ss](\d{1,2})[Ee](\d{1,2})(?:[Ee](\d{1,2}))?(?:[.\s_-]+(.+?))?(?:[.\s_-]+(\d{3,4}p))?(?:[.\s_-]+(x264|x265|h264|h265|hevc))?(?:[.\s_-]+(.+?))?\.(\w+)$`),
+			Pattern: regexp.MustCompile(`(?i)^(.+?)[.\s_-]+[Ss](\d{1,2})[Ee](\d{1,2})(?:[Ee](\d{1,2}))?(?:[Ee]\d{1,2})*(?:[.\s_-]+(.+?))?(?:[.\s_-]+(\d{3,4}p))?(?:[.\s_-]+(x264|x265|h264|h265|hevc))?(?:[.\s_-]+(.+?))?\.(\w+)$`),
 			Extract: pm.extractStandardSE,
 		},
 		// Alternative format: Show Name 1x01 Episode Title
@@ -98,10 +98,49 @@ func (pm *PatternMatcher) ParseFilename(filename string) (*TVShowInfo, error) {
 			}
 			info.OriginalName = filename
 			info.Extension = strings.ToLower(filepath.Ext(filename)[1:])
+			pm.enrichMetadata(info, filename)
 			return info, nil
 		}
 	}
 	return nil, fmt.Errorf("no matching pattern found for: %s", filename)
+}
+
+var (
+	yearSuffixPattern   = regexp.MustCompile(`\s*\((19\d{2}|20\d{2})\)$`)
+	regionSuffixPattern = regexp.MustCompile(`(?i)\s+(US|UK|AU|CA)$`)
+	episodeMarker       = regexp.MustCompile(`(?i)(s\d{1,2}e\d{1,2}(?:e\d{1,2})*|\d{1,2}x\d{1,2}|season[.\s_-]+\d{1,2}[.\s_-]+episode[.\s_-]+\d{1,2})`)
+	releaseToken        = regexp.MustCompile(`(?i)^(480p|720p|1080p|2160p|4k|bluray|brrip|webrip|web-dl|hdtv|dvdrip|remux|x264|x265|h264|h265|hevc|aac|ac3|dts|10bit|8bit)$`)
+)
+
+func (pm *PatternMatcher) enrichMetadata(info *TVShowInfo, filename string) {
+	if matches := yearSuffixPattern.FindStringSubmatch(info.ShowName); len(matches) == 2 {
+		info.Year = matches[1]
+		info.ShowName = strings.TrimSpace(yearSuffixPattern.ReplaceAllString(info.ShowName, ""))
+	}
+	if matches := regionSuffixPattern.FindStringSubmatch(info.ShowName); len(matches) == 2 {
+		info.Region = strings.ToUpper(matches[1])
+		info.ShowName = strings.TrimSpace(regionSuffixPattern.ReplaceAllString(info.ShowName, ""))
+	}
+
+	base := strings.TrimSuffix(filename, filepath.Ext(filename))
+	marker := episodeMarker.FindStringIndex(base)
+	if marker == nil {
+		return
+	}
+	remainder := strings.Trim(base[marker[1]:], ". _-")
+	if remainder == "" {
+		info.EpisodeTitle = ""
+		return
+	}
+	parts := regexp.MustCompile(`[.\s_-]+`).Split(remainder, -1)
+	title := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if releaseToken.MatchString(part) {
+			break
+		}
+		title = append(title, part)
+	}
+	info.EpisodeTitle = cleanEpisodeTitle(strings.Join(title, " "))
 }
 
 func (pm *PatternMatcher) extractStandardSE(matches []string) (*TVShowInfo, error) {

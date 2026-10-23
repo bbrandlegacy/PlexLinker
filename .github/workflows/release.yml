@@ -3,26 +3,67 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*.*.*'
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  release:
-    name: Create Release
+  preflight:
+    name: Verify release source
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+
+    - name: Require an exact semantic version tag on main
+      shell: bash
+      run: |
+        if [[ ! "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "Release tag must be an exact semantic version such as v2.0.0." >&2
+          exit 1
+        fi
+        git fetch --no-tags origin main
+        if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
+          echo "Refusing to release: ${GITHUB_SHA} is not contained in main." >&2
+          exit 1
+        fi
+
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: true
+
+    - name: Test release source
+      run: |
+        go vet ./...
+        go test -race ./...
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: preflight
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7
       with:
         fetch-depth: 0
 
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v7
       with:
-        go-version: '1.22'
+        go-version-file: go.mod
 
     - name: Get version
       id: get_version
@@ -31,43 +72,85 @@ jobs:
     - name: Build binaries
       run: |
         mkdir -p dist
-
-        # Build for Windows AMD64
-        GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/plexlinker-windows-amd64.exe ./cmd/plexlinker
-
-        # Build for Linux AMD64
-        GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/plexlinker-linux-amd64 ./cmd/plexlinker
-
-        # Build for macOS AMD64 (Intel)
-        GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/plexlinker-darwin-amd64 ./cmd/plexlinker
-
-        # Build for macOS ARM64 (Apple Silicon)
-        GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/plexlinker-darwin-arm64 ./cmd/plexlinker
+        VERSION="${GITHUB_REF#refs/tags/}"
+        LDFLAGS="-s -w -X plexlinker/internal/buildinfo.Version=${VERSION}"
+        GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="$LDFLAGS" -o dist/plexlinker-windows-amd64.exe ./cmd/plexlinker-v2
+        GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="$LDFLAGS" -o dist/plexlinker-linux-amd64 ./cmd/plexlinker-v2
+        GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="$LDFLAGS" -o dist/plexlinker-linux-arm64 ./cmd/plexlinker-v2
+        GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="$LDFLAGS" -o dist/plexlinker-darwin-amd64 ./cmd/plexlinker-v2
+        GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="$LDFLAGS" -o dist/plexlinker-darwin-arm64 ./cmd/plexlinker-v2
+        GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/plexlinker-v1-legacy-windows-amd64.exe ./cmd/plexlinker
+        cp setup-linux.sh setup-windows.ps1 setup-windows.cmd dist/
 
     - name: Create checksums
       run: |
         cd dist
         sha256sum * > checksums.txt
 
+    - name: Package one-shot installers
+      run: |
+        mkdir -p package/windows package/linux-amd64 package/linux-arm64
+        cp dist/plexlinker-windows-amd64.exe package/windows/plexlinker-v2.exe
+        cp dist/setup-windows.ps1 dist/setup-windows.cmd package/windows/
+        cp dist/plexlinker-linux-amd64 package/linux-amd64/
+        cp dist/setup-linux.sh package/linux-amd64/
+        cp dist/plexlinker-linux-arm64 package/linux-arm64/
+        cp dist/setup-linux.sh package/linux-arm64/
+        chmod +x package/linux-amd64/setup-linux.sh package/linux-arm64/setup-linux.sh
+        (cd package/windows && zip -r ../../dist/plexlinker-windows-amd64-setup.zip .)
+        tar -C package/linux-amd64 -czf dist/plexlinker-linux-amd64-setup.tar.gz .
+        tar -C package/linux-arm64 -czf dist/plexlinker-linux-arm64-setup.tar.gz .
+        (cd dist && sha256sum plexlinker-*-setup.* >> checksums.txt)
+
+    - name: Smoke-test version metadata
+      run: |
+        chmod +x dist/plexlinker-linux-amd64
+        EXPECTED="PlexLinker ${GITHUB_REF_NAME}"
+        ACTUAL="$(dist/plexlinker-linux-amd64 --version)"
+        if [ "${ACTUAL}" != "${EXPECTED}" ]; then
+          echo "Version mismatch: expected '${EXPECTED}', got '${ACTUAL}'" >&2
+          exit 1
+        fi
+
     - name: Generate changelog
       id: changelog
+      shell: bash
       run: |
-        # Extract changelog for this version from CHANGELOG.md
-        if [ -f CHANGELOG.md ]; then
-          # Get content between this version and previous version/unreleased
-          sed -n "/## \[${GITHUB_REF#refs/tags/v}\]/,/## \[/p" CHANGELOG.md | sed '$d' > release_notes.md
-        else
-          echo "See CHANGELOG.md for details" > release_notes.md
+        VERSION="${GITHUB_REF#refs/tags/v}"
+        extract_section() {
+          awk -v heading="$1" '
+            $0 == "## [" heading "]" { capture = 1; next }
+            capture && /^## \[/ { exit }
+            capture && /^\[[^]]+\]:/ { exit }
+            capture { print }
+          ' CHANGELOG.md
+        }
+
+        extract_section "${VERSION}" > release_notes.md
+        if ! grep -q '[^[:space:]]' release_notes.md; then
+          extract_section "Unreleased" > release_notes.md
+        fi
+        if ! grep -q '[^[:space:]]' release_notes.md; then
+          echo "No release notes found for ${VERSION} or Unreleased." >&2
+          exit 1
         fi
 
     - name: Create Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         files: |
           dist/plexlinker-windows-amd64.exe
           dist/plexlinker-linux-amd64
+          dist/plexlinker-linux-arm64
           dist/plexlinker-darwin-amd64
           dist/plexlinker-darwin-arm64
+          dist/plexlinker-v1-legacy-windows-amd64.exe
+          dist/setup-linux.sh
+          dist/setup-windows.ps1
+          dist/setup-windows.cmd
+          dist/plexlinker-windows-amd64-setup.zip
+          dist/plexlinker-linux-amd64-setup.tar.gz
+          dist/plexlinker-linux-arm64-setup.tar.gz
           dist/checksums.txt
         body_path: release_notes.md
         draft: false
@@ -76,7 +159,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: release-binaries
         path: dist/*

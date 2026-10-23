@@ -2,43 +2,42 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, v2-development ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, develop, v2-development ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     name: Test
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        go-version: ['1.21', '1.22']
+        go-version: ['1.26.x', 'stable']
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v7
       with:
         go-version: ${{ matrix.go-version }}
-
-    - name: Cache Go modules
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-go-
+        cache: true
 
     - name: Download dependencies
       run: go mod download
 
     - name: Run go vet
-      run: go vet ./...
+      run: go vet './...'
 
     - name: Run go fmt
       run: |
@@ -62,46 +61,165 @@ jobs:
       if: runner.os == 'Windows'
 
     - name: Run tests
-      run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+      run: go test -v -race -coverprofile=coverage.out -covermode=atomic './...'
+      shell: bash
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v7
       with:
-        file: ./coverage.out
+        files: ./coverage.out
         flags: ${{ runner.os }}
         name: codecov-${{ matrix.os }}-${{ matrix.go-version }}
-      if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.22'
+      if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.26.x'
+
+  windows-acceptance:
+    name: Windows aria2 persistence acceptance
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7
+
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: true
+
+    - name: Install aria2
+      run: choco install aria2 --yes --no-progress
+
+    - name: Build acceptance binaries
+      run: |
+        go build -trimpath -o plexlinker-v2.exe ./cmd/plexlinker-v2
+        go build -trimpath -o plexlinker-demo-server.exe ./cmd/plexlinker-demo-server
+
+    - name: Exercise one-shot Windows setup
+      shell: pwsh
+      run: |
+        $env:PLEXLINKER_SETUP_CONFIRMED = '1'
+        $env:PLEXLINKER_SOURCE_EXE = "$PWD\plexlinker-v2.exe"
+        .\setup-windows.ps1
+        & "$env:ProgramFiles\PlexLinker\plexlinker.exe" --version
+        if ($LASTEXITCODE -ne 0) {
+          throw 'Installed PlexLinker version check failed.'
+        }
+
+    - name: Exercise RPC, Task Scheduler, storage, and remote browsing
+      shell: pwsh
+      run: |
+        $demo = Start-Process -FilePath '.\plexlinker-demo-server.exe' `
+          -ArgumentList '-listen', '127.0.0.1:18787' -PassThru `
+          -RedirectStandardOutput "$env:RUNNER_TEMP\demo.stdout.log" `
+          -RedirectStandardError "$env:RUNNER_TEMP\demo.stderr.log"
+        try {
+          $ready = $false
+          foreach ($attempt in 1..20) {
+            try {
+              $connection = [Net.Sockets.TcpClient]::new('127.0.0.1', 18787)
+              $connection.Dispose()
+              $ready = $true
+              break
+            } catch {
+              Start-Sleep -Milliseconds 250
+            }
+          }
+          if (-not $ready) {
+            throw 'Demo server did not become ready.'
+          }
+
+          $env:PLEXLINKER_CONFIG = "$env:RUNNER_TEMP\plexlinker-doctor.json"
+          $env:PLEX_BASE_URL = 'http://127.0.0.1:18787/'
+          $env:PLEX_USERNAME = 'plex'
+          $env:PLEX_PASSWORD = 'demo'
+          $env:PLEXLINKER_ARIA2_ENDPOINT = 'http://127.0.0.1:16899/jsonrpc'
+          $env:PLEXLINKER_ARIA2_SECRET = 'ci-doctor-secret'
+
+          $env:PLEXLINKER_INTEGRATION = '1'
+          go test -count=1 -run TestManagedAria2DownloadIntegration -v ./internal/aria2manager
+          if ($LASTEXITCODE -ne 0) {
+            throw "Managed aria2 download integration failed with exit code $LASTEXITCODE."
+          }
+
+          # The integration test deliberately uses the production task name.
+          # Reset it before doctor so a just-finished Task Scheduler instance
+          # cannot suppress the second launch while Windows updates task state.
+          schtasks /end /tn PlexLinker_aria2 2>$null
+          schtasks /delete /tn PlexLinker_aria2 /f 2>$null
+          Get-Process aria2c -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep -Milliseconds 500
+
+          & .\plexlinker-v2.exe doctor --destination "$env:RUNNER_TEMP" --timeout 30s
+          if ($LASTEXITCODE -ne 0) {
+            throw "PlexLinker doctor failed with exit code $LASTEXITCODE."
+          }
+          schtasks /query /tn PlexLinker_aria2 /fo LIST
+          if ($LASTEXITCODE -ne 0) {
+            throw 'PlexLinker_aria2 was not registered in Task Scheduler.'
+          }
+        } finally {
+          Stop-Process -Id $demo.Id -Force -ErrorAction SilentlyContinue
+          schtasks /end /tn PlexLinker_aria2 2>$null
+          schtasks /delete /tn PlexLinker_aria2 /f 2>$null
+          Get-Process aria2c -ErrorAction SilentlyContinue | Stop-Process -Force
+        }
+
+  linux-acceptance:
+    name: Linux aria2 persistence acceptance
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7
+
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: true
+
+    - name: Install aria2
+      run: |
+        sudo apt-get update
+        sudo apt-get install --yes aria2
+
+    - name: Exercise one-shot Linux setup
+      run: |
+        go build -trimpath -o plexlinker-linux-amd64 ./cmd/plexlinker-v2
+        PLEXLINKER_SETUP_CONFIRMED=1 PLEXLINKER_SOURCE_EXE="$PWD/plexlinker-linux-amd64" ./setup-linux.sh
+        /usr/local/bin/plexlinker --version
+        test -f "$HOME/.config/PlexLinker/setup-complete"
+
+    - name: Exercise managed RPC reconnection and a real transfer
+      run: PLEXLINKER_INTEGRATION=1 go test -count=1 -run TestManagedAria2DownloadIntegration -v ./internal/aria2manager
 
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, windows-acceptance, linux-acceptance]
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v7
       with:
-        go-version: '1.22'
+        go-version-file: go.mod
 
     - name: Build for multiple platforms
       run: |
-        # Build for Windows
-        GOOS=windows GOARCH=amd64 go build -o dist/plexlinker-windows-amd64.exe ./cmd/plexlinker
-
-        # Build for Linux
-        GOOS=linux GOARCH=amd64 go build -o dist/plexlinker-linux-amd64 ./cmd/plexlinker
-
-        # Build for macOS (Intel)
-        GOOS=darwin GOARCH=amd64 go build -o dist/plexlinker-darwin-amd64 ./cmd/plexlinker
-
-        # Build for macOS (Apple Silicon)
-        GOOS=darwin GOARCH=arm64 go build -o dist/plexlinker-darwin-arm64 ./cmd/plexlinker
+        mkdir -p dist
+        GOOS=windows GOARCH=amd64 go build -trimpath -o dist/plexlinker-v2-windows-amd64.exe ./cmd/plexlinker-v2
+        GOOS=linux GOARCH=amd64 go build -trimpath -o dist/plexlinker-v2-linux-amd64 ./cmd/plexlinker-v2
+        GOOS=linux GOARCH=arm64 go build -trimpath -o dist/plexlinker-v2-linux-arm64 ./cmd/plexlinker-v2
+        GOOS=darwin GOARCH=amd64 go build -trimpath -o dist/plexlinker-v2-darwin-amd64 ./cmd/plexlinker-v2
+        GOOS=darwin GOARCH=arm64 go build -trimpath -o dist/plexlinker-v2-darwin-arm64 ./cmd/plexlinker-v2
+        GOOS=windows GOARCH=amd64 go build -trimpath -o dist/plexlinker-v1-legacy-windows-amd64.exe ./cmd/plexlinker
+        cp setup-linux.sh setup-windows.ps1 setup-windows.cmd dist/
 
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: binaries
         path: dist/*
@@ -112,15 +230,15 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v7
       with:
-        go-version: '1.22'
+        go-version-file: go.mod
 
     - name: Run golangci-lint
-      uses: golangci/golangci-lint-action@v4
+      uses: golangci/golangci-lint-action@v9
       with:
         version: latest
         args: --timeout=5m

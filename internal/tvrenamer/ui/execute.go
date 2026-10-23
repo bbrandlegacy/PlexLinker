@@ -228,7 +228,7 @@ func (ui *ExecuteUI) saveLogFile() {
 	logPath := fmt.Sprintf("plexlinker_rename_log_%s.txt", timestamp)
 
 	var logContent strings.Builder
-	logContent.WriteString(fmt.Sprintf("PlexLinker Rename Log - %s\n", time.Now().Format("2006-01-02 15:04:05")))
+	fmt.Fprintf(&logContent, "PlexLinker Rename Log - %s\n", time.Now().Format("2006-01-02 15:04:05"))
 	logContent.WriteString(strings.Repeat("=", 50) + "\n\n")
 
 	for _, result := range ui.results {
@@ -237,11 +237,11 @@ func (ui *ExecuteUI) saveLogFile() {
 			status = "FAILED"
 		}
 
-		logContent.WriteString(fmt.Sprintf("[%s] %s\n", status, filepath.Base(result.OriginalPath)))
-		logContent.WriteString(fmt.Sprintf("  From: %s\n", result.OriginalPath))
-		logContent.WriteString(fmt.Sprintf("  To:   %s\n", result.NewPath))
+		fmt.Fprintf(&logContent, "[%s] %s\n", status, filepath.Base(result.OriginalPath))
+		fmt.Fprintf(&logContent, "  From: %s\n", result.OriginalPath)
+		fmt.Fprintf(&logContent, "  To:   %s\n", result.NewPath)
 		if result.Error != "" {
-			logContent.WriteString(fmt.Sprintf("  Error: %s\n", result.Error))
+			fmt.Fprintf(&logContent, "  Error: %s\n", result.Error)
 		}
 		logContent.WriteString("\n")
 	}

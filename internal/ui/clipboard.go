@@ -41,10 +41,12 @@ func CopyTextToClipboard(text string) error {
 
 	_, err = stdin.Write([]byte(text))
 	if err != nil {
-		stdin.Close()
+		_ = stdin.Close()
 		return err
 	}
 
-	stdin.Close()
+	if err := stdin.Close(); err != nil {
+		return err
+	}
 	return cmd.Wait()
 }
