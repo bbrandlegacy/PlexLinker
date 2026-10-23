@@ -2,8 +2,10 @@ package v2tui
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"plexlinker/internal/browser"
 	"plexlinker/internal/config"
 	"plexlinker/internal/downloads"
@@ -93,6 +95,46 @@ func TestDestinationViewFiltersFiles(t *testing.T) {
 	model.Update(directoryLoadedMsg{path: `W:\`, entries: []storage.Entry{{Name: "Movies", IsDir: true}, {Name: "readme.txt", IsDir: false}}})
 	if len(model.destinationEntries) != 1 || model.destinationEntries[0].Name != "Movies" {
 		t.Fatalf("entries = %#v", model.destinationEntries)
+	}
+}
+
+func TestCreateDirectoryPromptStartsWithChildPathPrefix(t *testing.T) {
+	t.Parallel()
+	model, _ := testModel()
+	model.tab = TabDestination
+	model.destinationPath = filepath.Join("root", "media")
+
+	key := tea.KeyPressMsg(tea.Key{Text: "n", Code: 'n'})
+	if _, command := model.handleKey(key); command != nil {
+		t.Fatal("opening the directory prompt should not start asynchronous work")
+	}
+	want := model.destinationPath + string(filepath.Separator)
+	if got := model.destinationInput.Value(); got != want {
+		t.Fatalf("directory prompt value = %q, want %q", got, want)
+	}
+}
+
+func TestGoToPathPromptStartsEmpty(t *testing.T) {
+	t.Parallel()
+	model, _ := testModel()
+	model.tab = TabDestination
+	model.destinationPath = filepath.Join("root", "media")
+
+	key := tea.KeyPressMsg(tea.Key{Text: "g", Code: 'g'})
+	if _, command := model.handleKey(key); command != nil {
+		t.Fatal("opening the path prompt should not start asynchronous work")
+	}
+	if got := model.destinationInput.Value(); got != "" {
+		t.Fatalf("go-to-path prompt value = %q, want an empty field", got)
+	}
+}
+
+func TestChildPathPrefixPreservesExistingSeparators(t *testing.T) {
+	t.Parallel()
+	for _, path := range []string{"/", "/tmp/", `W:\`, `\\server\share\`} {
+		if got := childPathPrefix(path); got != path {
+			t.Errorf("childPathPrefix(%q) = %q", path, got)
+		}
 	}
 }
 

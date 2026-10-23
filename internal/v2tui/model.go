@@ -249,12 +249,12 @@ func (m *Model) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, m.submitSelected()
 	case "g":
 		if m.tab == TabDestination {
-			m.openDestinationPrompt("go to path", m.destinationPath)
+			m.openDestinationPrompt("go to path", "")
 			return m, nil
 		}
 	case "n":
 		if m.tab == TabDestination {
-			m.openDestinationPrompt("create directory", m.destinationPath)
+			m.openDestinationPrompt("create directory", childPathPrefix(m.destinationPath))
 			return m, nil
 		}
 	case "f":
@@ -362,6 +362,13 @@ func (m *Model) openDestinationPrompt(mode, value string) {
 	m.destinationInput.SetValue(value)
 	m.destinationInput.CursorEnd()
 	m.destinationInput.Focus()
+}
+
+func childPathPrefix(path string) string {
+	if path == "" || strings.HasSuffix(path, "/") || strings.HasSuffix(path, `\`) {
+		return path
+	}
+	return path + string(filepath.Separator)
 }
 
 func (m *Model) handleDestinationPrompt(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
