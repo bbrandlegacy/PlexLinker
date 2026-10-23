@@ -5,7 +5,7 @@
 
 ## Stage 0 — Preserve and stabilize
 
-- Pin the v1 baseline with `v1-baseline-2026-10-23`.
+- Pin the v1 baseline with `baseline/v1-2026-10-23`.
 - Align the Go toolchain, CI, release, formatting, linting, and tests.
 - Add dependency review, CodeQL, Dependabot, and release concurrency guards.
 - Capture the v2 architecture and compatibility boundaries.

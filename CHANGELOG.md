@@ -26,4 +26,4 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 - The original tcell application remains available as the v1 legacy rollback artifact.
 
-[Unreleased]: https://github.com/bbrandlegacy/PlexLinker/compare/v1-baseline-2026-10-23...HEAD
+[Unreleased]: https://github.com/bbrandlegacy/PlexLinker/compare/baseline/v1-2026-10-23...HEAD
