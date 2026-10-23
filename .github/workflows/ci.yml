@@ -124,6 +124,12 @@ jobs:
           $env:PLEXLINKER_ARIA2_ENDPOINT = 'http://127.0.0.1:16899/jsonrpc'
           $env:PLEXLINKER_ARIA2_SECRET = 'ci-doctor-secret'
 
+          $env:PLEXLINKER_INTEGRATION = '1'
+          go test -count=1 -run TestManagedAria2DownloadIntegration -v ./internal/aria2manager
+          if ($LASTEXITCODE -ne 0) {
+            throw "Managed aria2 download integration failed with exit code $LASTEXITCODE."
+          }
+
           & .\plexlinker-v2.exe doctor --destination "$env:RUNNER_TEMP" --timeout 30s
           if ($LASTEXITCODE -ne 0) {
             throw "PlexLinker doctor failed with exit code $LASTEXITCODE."

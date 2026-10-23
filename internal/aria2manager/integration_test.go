@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -18,7 +19,8 @@ func TestManagedAria2DownloadIntegration(t *testing.T) {
 	if os.Getenv("PLEXLINKER_INTEGRATION") != "1" {
 		t.Skip("set PLEXLINKER_INTEGRATION=1 to run")
 	}
-	if _, err := os.Stat("/opt/homebrew/bin/aria2c"); err != nil {
+	executable, err := exec.LookPath("aria2c")
+	if err != nil {
 		t.Skip("aria2c not available")
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -34,7 +36,8 @@ func TestManagedAria2DownloadIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	endpoint := fmt.Sprintf("http://127.0.0.1:%d/jsonrpc", port)
-	manager, err := New(Config{Executable: "/opt/homebrew/bin/aria2c", Endpoint: endpoint, Secret: secret, AutoStart: true, DataDirectory: t.TempDir()})
+	managerConfig := Config{Executable: executable, Endpoint: endpoint, Secret: secret, AutoStart: true, DataDirectory: t.TempDir()}
+	manager, err := New(managerConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,6 +45,19 @@ func TestManagedAria2DownloadIntegration(t *testing.T) {
 	defer cancel()
 	if _, err := manager.Ensure(ctx); err != nil {
 		t.Fatal(err)
+	}
+	// Reconnect through a new manager instance. This proves ownership of the
+	// service is independent from the manager that launched it.
+	reconnected, err := New(managerConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err := reconnected.Ensure(ctx)
+	if err != nil {
+		t.Fatalf("reconnect to managed aria2: %v", err)
+	}
+	if !status.Running {
+		t.Fatal("reconnected manager reported aria2 as stopped")
 	}
 	client := aria2.NewClient(endpoint, secret)
 	t.Cleanup(func() { _ = client.Shutdown(context.Background(), true) })
