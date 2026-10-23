@@ -58,6 +58,20 @@ go build -o plexlinker-v1 ./cmd/plexlinker
 
 ## First run
 
+### One-shot setup
+
+Keep the platform binary and setup files in the same extracted directory.
+
+- Windows: double-click `setup-windows.cmd`. It explains the changes, asks for
+  confirmation, and uses the normal UAC administrator prompt.
+- Linux: run `./setup-linux.sh`. It explains the changes, asks for confirmation,
+  validates sudo, installs the matching binary globally, enables user lingering,
+  and invalidates sudo's temporary credential timestamp when finished.
+
+PlexLinker also performs this preflight on first interactive launch and offers
+to run the colocated installer. Neither installer reads or stores an
+administrator password.
+
 1. Put the PlexLinker v2 binary and aria2 on `PATH`.
 2. Run PlexLinker and press `5` for Settings.
 3. Configure the remote HTTPS URL and Basic Auth credentials.

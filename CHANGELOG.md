@@ -6,6 +6,9 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Added
 
+- One-shot Windows and Linux installers with explicit first-run consent,
+  dependency installation, native privilege validation, global command setup,
+  and Linux SSH/reboot persistence configuration.
 - Bubble Tea v2 interface for remote browsing, selection, destinations, settings, and live downloads.
 - Persistent aria2 JSON-RPC queue with session recovery and lifecycle controls.
 - Native Windows drive discovery, UNC paths, destination favorites, and directory creation.

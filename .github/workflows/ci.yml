@@ -94,6 +94,17 @@ jobs:
         go build -trimpath -o plexlinker-v2.exe ./cmd/plexlinker-v2
         go build -trimpath -o plexlinker-demo-server.exe ./cmd/plexlinker-demo-server
 
+    - name: Exercise one-shot Windows setup
+      shell: pwsh
+      run: |
+        $env:PLEXLINKER_SETUP_CONFIRMED = '1'
+        $env:PLEXLINKER_SOURCE_EXE = "$PWD\plexlinker-v2.exe"
+        .\setup-windows.ps1
+        & "$env:ProgramFiles\PlexLinker\plexlinker.exe" --version
+        if ($LASTEXITCODE -ne 0) {
+          throw 'Installed PlexLinker version check failed.'
+        }
+
     - name: Exercise RPC, Task Scheduler, storage, and remote browsing
       shell: pwsh
       run: |
@@ -172,6 +183,13 @@ jobs:
         sudo apt-get update
         sudo apt-get install --yes aria2
 
+    - name: Exercise one-shot Linux setup
+      run: |
+        go build -trimpath -o plexlinker-linux-amd64 ./cmd/plexlinker-v2
+        PLEXLINKER_SETUP_CONFIRMED=1 PLEXLINKER_SOURCE_EXE="$PWD/plexlinker-linux-amd64" ./setup-linux.sh
+        /usr/local/bin/plexlinker --version
+        test -f "$HOME/.config/PlexLinker/setup-complete"
+
     - name: Exercise managed RPC reconnection and a real transfer
       run: PLEXLINKER_INTEGRATION=1 go test -count=1 -run TestManagedAria2DownloadIntegration -v ./internal/aria2manager
 
@@ -198,6 +216,7 @@ jobs:
         GOOS=darwin GOARCH=amd64 go build -trimpath -o dist/plexlinker-v2-darwin-amd64 ./cmd/plexlinker-v2
         GOOS=darwin GOARCH=arm64 go build -trimpath -o dist/plexlinker-v2-darwin-arm64 ./cmd/plexlinker-v2
         GOOS=windows GOARCH=amd64 go build -trimpath -o dist/plexlinker-v1-legacy-windows-amd64.exe ./cmd/plexlinker
+        cp setup-linux.sh setup-windows.ps1 setup-windows.cmd dist/
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v7

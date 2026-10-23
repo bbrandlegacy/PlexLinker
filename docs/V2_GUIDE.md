@@ -13,6 +13,13 @@ or losing SSH does not stop queued work.
 The release binary is self-contained apart from aria2. Go 1.26 is only needed
 when building from source.
 
+The setup archives contain the binary and its platform installer. Windows users
+double-click `setup-windows.cmd`; Linux users run `./setup-linux.sh`. Both show
+their planned changes and require confirmation before modifying the host. Linux
+uses `sudo -v` plus the temporary sudo timestamp and ends with `sudo -k`;
+Windows uses UAC. PlexLinker never receives or stores the administrator
+password.
+
 Confirm an installed binary and its embedded release version with
 `plexlinker.exe --version`.
 

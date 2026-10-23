@@ -80,11 +80,27 @@ jobs:
         GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="$LDFLAGS" -o dist/plexlinker-darwin-amd64 ./cmd/plexlinker-v2
         GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="$LDFLAGS" -o dist/plexlinker-darwin-arm64 ./cmd/plexlinker-v2
         GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/plexlinker-v1-legacy-windows-amd64.exe ./cmd/plexlinker
+        cp setup-linux.sh setup-windows.ps1 setup-windows.cmd dist/
 
     - name: Create checksums
       run: |
         cd dist
         sha256sum * > checksums.txt
+
+    - name: Package one-shot installers
+      run: |
+        mkdir -p package/windows package/linux-amd64 package/linux-arm64
+        cp dist/plexlinker-windows-amd64.exe package/windows/plexlinker-v2.exe
+        cp dist/setup-windows.ps1 dist/setup-windows.cmd package/windows/
+        cp dist/plexlinker-linux-amd64 package/linux-amd64/
+        cp dist/setup-linux.sh package/linux-amd64/
+        cp dist/plexlinker-linux-arm64 package/linux-arm64/
+        cp dist/setup-linux.sh package/linux-arm64/
+        chmod +x package/linux-amd64/setup-linux.sh package/linux-arm64/setup-linux.sh
+        (cd package/windows && zip -r ../../dist/plexlinker-windows-amd64-setup.zip .)
+        tar -C package/linux-amd64 -czf dist/plexlinker-linux-amd64-setup.tar.gz .
+        tar -C package/linux-arm64 -czf dist/plexlinker-linux-arm64-setup.tar.gz .
+        (cd dist && sha256sum plexlinker-*-setup.* >> checksums.txt)
 
     - name: Smoke-test version metadata
       run: |
@@ -129,6 +145,12 @@ jobs:
           dist/plexlinker-darwin-amd64
           dist/plexlinker-darwin-arm64
           dist/plexlinker-v1-legacy-windows-amd64.exe
+          dist/setup-linux.sh
+          dist/setup-windows.ps1
+          dist/setup-windows.cmd
+          dist/plexlinker-windows-amd64-setup.zip
+          dist/plexlinker-linux-amd64-setup.tar.gz
+          dist/plexlinker-linux-arm64-setup.tar.gz
           dist/checksums.txt
         body_path: release_notes.md
         draft: false

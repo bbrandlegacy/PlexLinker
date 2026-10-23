@@ -11,6 +11,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"plexlinker/internal/aria2"
 	"plexlinker/internal/aria2manager"
+	"plexlinker/internal/bootstrap"
 	"plexlinker/internal/buildinfo"
 	"plexlinker/internal/client"
 	"plexlinker/internal/config"
@@ -47,6 +48,9 @@ func main() {
 }
 
 func run() error {
+	if err := bootstrap.Ensure(); err != nil {
+		return err
+	}
 	cfg, err := config.LoadV2Config()
 	if err != nil {
 		return err
