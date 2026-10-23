@@ -2,6 +2,7 @@ package v2tui
 
 import (
 	"context"
+	"os/exec"
 
 	"plexlinker/internal/browser"
 	"plexlinker/internal/client"
@@ -70,4 +71,5 @@ type Services struct {
 	Config         *config.Config
 	SaveConfig     func(*config.Config) error
 	Version        string
+	RenamerCommand func() *exec.Cmd
 }

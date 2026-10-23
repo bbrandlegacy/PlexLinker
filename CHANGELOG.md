@@ -12,6 +12,8 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Windows Task Scheduler and Linux systemd user-service integration.
 - macOS/Linux volume discovery and aria2 daemon support.
 - Authenticated local demo directory server and real aria2 integration test.
+- TV renamer handoff from the v2 interface, preserving the existing preview,
+  execute, and undo workflow.
 - Cross-platform v2 builds, CodeQL, dependency review, Dependabot, and vulnerability scanning.
 
 ### Changed

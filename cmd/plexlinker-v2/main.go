@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/gdamore/tcell/v2"
 	"plexlinker/internal/aria2"
 	"plexlinker/internal/aria2manager"
 	"plexlinker/internal/buildinfo"
@@ -14,10 +16,18 @@ import (
 	"plexlinker/internal/config"
 	"plexlinker/internal/downloads"
 	"plexlinker/internal/storage"
+	tvui "plexlinker/internal/tvrenamer/ui"
 	"plexlinker/internal/v2tui"
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "rename" {
+		if err := runTVRenamer(); err != nil {
+			fmt.Fprintln(os.Stderr, "PlexLinker TV renamer:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "PlexLinker v2:", err)
 		os.Exit(1)
@@ -64,8 +74,37 @@ func run() error {
 		Config:         cfg,
 		SaveConfig:     func(updated *config.Config) error { return updated.SaveV2() },
 		Version:        buildinfo.Version,
+		RenamerCommand: func() *exec.Cmd { executable, _ := os.Executable(); return exec.Command(executable, "rename") },
 	})
 	program := tea.NewProgram(model)
 	_, err = program.Run()
 	return err
+}
+
+func runTVRenamer() error {
+	screen, err := tcell.NewScreen()
+	if err != nil {
+		return fmt.Errorf("create terminal screen: %w", err)
+	}
+	if err := screen.Init(); err != nil {
+		return fmt.Errorf("initialize terminal screen: %w", err)
+	}
+	defer screen.Fini()
+	ui := tvui.NewTVBrowserUI(&screen)
+	if err := ui.LoadCurrentDirectory(); err != nil {
+		return err
+	}
+	for {
+		ui.Draw()
+		switch event := screen.PollEvent().(type) {
+		case *tcell.EventKey:
+			if ui.HandleKeyEvent(event) {
+				return nil
+			}
+		case *tcell.EventResize:
+			screen.Sync()
+		case *tcell.EventInterrupt:
+			return nil
+		}
+	}
 }

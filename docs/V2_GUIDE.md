@@ -38,6 +38,7 @@ current user's config directory.
 - `f`: save the current destination as a favorite.
 - `d`: validate the destination and submit selected files to aria2.
 - `4`: monitor jobs; `p` pauses/resumes and `x` removes the highlighted job.
+- `6`: temporarily hand the terminal to the TV renamer and return when done.
 
 Drive letters mapped in an interactive Windows login are not always visible to
 OpenSSH or Task Scheduler. If `W:` or `N:` is absent, use its UNC path and save

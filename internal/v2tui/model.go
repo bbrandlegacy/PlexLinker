@@ -210,6 +210,17 @@ func (m *Model) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "5":
 		m.tab = TabSettings
 		m.focusSetting(0)
+	case "6":
+		if m.services.RenamerCommand == nil {
+			m.status = "TV renamer is unavailable"
+			return m, nil
+		}
+		return m, tea.ExecProcess(m.services.RenamerCommand(), func(err error) tea.Msg {
+			if err != nil {
+				return actionMsg{err: fmt.Errorf("TV renamer: %w", err)}
+			}
+			return actionMsg{message: "Returned from TV renamer"}
+		})
 	case "tab":
 		m.tab = (m.tab + 1) % 5
 	case "shift+tab":
@@ -638,6 +649,8 @@ func (m *Model) View() tea.View {
 		b.WriteString(style.Render("[" + label + "]"))
 		b.WriteString(" ")
 	}
+	b.WriteString(muted.Render("[6 TV Renamer]"))
+	b.WriteString(" ")
 	b.WriteString("\n")
 	b.WriteString(muted.Render(strings.Repeat("─", max(1, m.width))))
 	b.WriteString("\n")
