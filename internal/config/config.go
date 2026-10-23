@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"plexlinker/internal/paths"
 )
 
 type ScriptFormat string
@@ -71,6 +73,12 @@ func (c *Config) Normalize() {
 	}
 	if c.MaxConcurrentDownloads <= 0 {
 		c.MaxConcurrentDownloads = 3
+	}
+	c.MoviesPath = paths.NormalizeDestinationPath(c.MoviesPath)
+	c.TVShowsPath = paths.NormalizeDestinationPath(c.TVShowsPath)
+	c.OtherPath = paths.NormalizeDestinationPath(c.OtherPath)
+	for index := range c.FavoritePaths {
+		c.FavoritePaths[index] = paths.NormalizeDestinationPath(c.FavoritePaths[index])
 	}
 }
 
@@ -174,6 +182,7 @@ func LoadV2Config() (*Config, error) {
 
 // SaveV2 atomically writes the per-user v2 configuration with user-only permissions.
 func (c *Config) SaveV2() error {
+	c.Normalize()
 	path, err := GetV2ConfigPath()
 	if err != nil {
 		return err

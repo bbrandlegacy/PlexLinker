@@ -25,7 +25,8 @@ func TestSaveAndLoadV2Config(t *testing.T) {
 	t.Setenv("PLEXLINKER_CONFIG", path)
 	cfg := NewConfig()
 	cfg.BaseURL, cfg.Username, cfg.Password = "https://media.example.test/", "user", "pass"
-	cfg.FavoritePaths = []string{`W:\movies`, `\\nas\shows`}
+	cfg.MoviesPath, cfg.TVShowsPath = `W:\\movies`, `W:\\shows`
+	cfg.FavoritePaths = []string{`W:\\movies`, `\\\\nas\\shows`}
 	if err := cfg.SaveV2(); err != nil {
 		t.Fatal(err)
 	}
@@ -35,6 +36,9 @@ func TestSaveAndLoadV2Config(t *testing.T) {
 	}
 	if loaded.BaseURL != cfg.BaseURL || len(loaded.FavoritePaths) != 2 {
 		t.Fatalf("loaded = %#v", loaded)
+	}
+	if loaded.MoviesPath != `W:\movies` || loaded.TVShowsPath != `W:\shows` || loaded.FavoritePaths[1] != `\\nas\shows` {
+		t.Fatalf("paths were not normalized: %#v", loaded)
 	}
 	// Windows does not represent ACLs through Unix permission bits.
 	if runtime.GOOS != "windows" {

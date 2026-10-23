@@ -36,6 +36,8 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Canonicalized doubled Windows drive and UNC separators from migrated or
+  manually entered destinations before displaying or submitting downloads.
 - Expanded case-insensitive video and audio discovery and recover full media
   filenames from link targets when directory indexes use shortened labels.
 - Added failed-job retry and correct aria2 result removal for completed or

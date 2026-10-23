@@ -1,6 +1,9 @@
 package paths
 
-import "runtime"
+import (
+	"runtime"
+	"strings"
+)
 
 // Default destination paths for different media types
 const (
@@ -53,5 +56,35 @@ func ResolveAutoPath(path, mediaType string) string {
 			return GetDefaultOtherPath()
 		}
 	}
+	return NormalizeDestinationPath(path)
+}
+
+// NormalizeDestinationPath canonicalizes user-entered Windows paths without
+// applying host-OS filepath rules. This matters when editing a Windows config
+// on macOS/Linux and when migrating values that contain doubled separators.
+// UNC paths retain exactly two leading backslashes.
+func NormalizeDestinationPath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" || path == "auto" {
+		return path
+	}
+	if len(path) >= 2 && isASCIILetter(path[0]) && path[1] == ':' {
+		return path[:2] + collapseWindowsSeparators(path[2:])
+	}
+	if strings.HasPrefix(path, `\\`) {
+		return `\\` + strings.TrimLeft(collapseWindowsSeparators(strings.TrimLeft(path, `\`)), `\`)
+	}
 	return path
+}
+
+func collapseWindowsSeparators(value string) string {
+	value = strings.ReplaceAll(value, "/", `\`)
+	for strings.Contains(value, `\\`) {
+		value = strings.ReplaceAll(value, `\\`, `\`)
+	}
+	return value
+}
+
+func isASCIILetter(value byte) bool {
+	return value >= 'A' && value <= 'Z' || value >= 'a' && value <= 'z'
 }
