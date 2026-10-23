@@ -72,10 +72,12 @@ func TestManagedAria2DownloadIntegration(t *testing.T) {
 		// the log file. Wait for that handle so TempDir cleanup is reliable on
 		// Windows, where an open file cannot be removed.
 		logPath := filepath.Join(dataDirectory, "aria2.log")
+		probePath := logPath + ".released"
 		for shutdownCtx.Err() == nil {
-			file, openErr := os.OpenFile(logPath, os.O_WRONLY|os.O_APPEND, 0)
-			if openErr == nil {
-				_ = file.Close()
+			if renameErr := os.Rename(logPath, probePath); renameErr == nil {
+				if err := os.Rename(probePath, logPath); err != nil {
+					t.Errorf("restore aria2 log after release probe: %v", err)
+				}
 				return
 			}
 			time.Sleep(50 * time.Millisecond)
