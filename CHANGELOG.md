@@ -36,6 +36,8 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Fixed
 
+- Expanded case-insensitive video and audio discovery and recover full media
+  filenames from link targets when directory indexes use shortened labels.
 - Made direct destination entry start with a clean field so absolute paths,
   Windows drive letters, and UNC paths do not append to the current directory.
 - Made directory creation prefill a platform-correct child path.

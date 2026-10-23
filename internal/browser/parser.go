@@ -27,28 +27,56 @@ type DirectoryItem struct {
 	ModifiedTime time.Time
 }
 
-func (di *DirectoryItem) IsVideoFile() bool {
-	if di.Type != TypeFile {
-		return false
-	}
+var videoExtensions = map[string]struct{}{
+	".3g2": {}, ".3gp": {}, ".amv": {}, ".asf": {}, ".avi": {}, ".av1": {},
+	".divx": {}, ".drc": {}, ".dv": {}, ".f4f": {}, ".f4p": {}, ".f4v": {},
+	".flv": {}, ".gif": {}, ".gifv": {}, ".h264": {}, ".h265": {}, ".hevc": {},
+	".m1v": {}, ".m2p": {}, ".m2t": {}, ".m2ts": {}, ".m2v": {}, ".m4v": {},
+	".mkv": {}, ".mk3d": {}, ".mng": {}, ".mov": {}, ".mp4": {}, ".mpe": {},
+	".mpeg": {}, ".mpg": {}, ".mpv": {}, ".mpv2": {}, ".mts": {}, ".mxf": {},
+	".nsv": {}, ".ogm": {}, ".ogv": {}, ".qt": {}, ".rm": {}, ".rmvb": {},
+	".roq": {}, ".svi": {}, ".ts": {}, ".v210": {}, ".viv": {}, ".vob": {},
+	".webm": {}, ".wmv": {}, ".xvid": {}, ".y4m": {}, ".yuv": {},
+}
 
-	videoExtensions := []string{
-		".3g2", ".3gp", ".amv", ".asf", ".avi", ".divx", ".drc",
-		".dv", ".f4f", ".f4p", ".f4v", ".flv", ".gif", ".gifv",
-		".m1v", ".m2ts", ".m2v", ".m4v", ".mng", ".mov", ".mp2",
-		".mp4", ".mpe", ".mpeg", ".mpg", ".mpv", ".mpv2", ".mts",
-		".mxf", ".mkv", ".nsv", ".ogv", ".qt", ".rm", ".rmvb",
-		".roq", ".svi", ".ts", ".viv", ".vob", ".webm", ".wmv",
-		".xvid", ".yuv",
-	}
+var audioExtensions = map[string]struct{}{
+	".3ga": {}, ".8svx": {}, ".aac": {}, ".ac3": {}, ".adts": {}, ".aif": {},
+	".aifc": {}, ".aiff": {}, ".alac": {}, ".amr": {}, ".ape": {}, ".au": {},
+	".awb": {}, ".caf": {}, ".cda": {}, ".dct": {}, ".dff": {}, ".dsf": {},
+	".dss": {}, ".dts": {}, ".dtshd": {}, ".dvf": {}, ".eac3": {}, ".ec3": {},
+	".flac": {}, ".gsm": {}, ".iklax": {}, ".ivs": {}, ".m4a": {}, ".m4b": {},
+	".m4p": {}, ".mid": {}, ".midi": {}, ".mka": {}, ".mlp": {}, ".mmf": {},
+	".mogg": {}, ".mp1": {}, ".mp2": {}, ".mp3": {}, ".mpa": {}, ".mpc": {},
+	".msv": {}, ".nmf": {}, ".oga": {}, ".ogg": {}, ".opus": {}, ".pcm": {},
+	".ra": {}, ".raw": {}, ".rf64": {}, ".snd": {}, ".sln": {}, ".tak": {},
+	".thd": {}, ".truehd": {}, ".tta": {}, ".voc": {}, ".vox": {}, ".wav": {},
+	".w64": {}, ".wma": {}, ".wv": {},
+}
 
-	lowerName := strings.ToLower(di.Name)
-	for _, ext := range videoExtensions {
-		if strings.HasSuffix(lowerName, ext) {
+func (di *DirectoryItem) hasExtension(extensions map[string]struct{}) bool {
+	for _, candidate := range []string{di.Name, di.Path} {
+		if hasExtension(candidate, extensions) {
 			return true
 		}
 	}
 	return false
+}
+
+func hasExtension(candidate string, extensions map[string]struct{}) bool {
+	extension := strings.ToLower(pathpkg.Ext(strings.TrimSpace(candidate)))
+	_, ok := extensions[extension]
+	return ok
+}
+
+func hasMediaExtension(candidate string) bool {
+	return hasExtension(candidate, videoExtensions) || hasExtension(candidate, audioExtensions)
+}
+
+func (di *DirectoryItem) IsVideoFile() bool {
+	if di.Type != TypeFile {
+		return false
+	}
+	return di.hasExtension(videoExtensions)
 }
 
 func (di *DirectoryItem) IsAudioFile() bool {
@@ -56,22 +84,7 @@ func (di *DirectoryItem) IsAudioFile() bool {
 		return false
 	}
 
-	audioExtensions := []string{
-		".3ga", ".8svx", ".aac", ".ac3", ".aiff", ".alac", ".ape",
-		".au", ".awb", ".cda", ".dct", ".dss", ".dts", ".dvf",
-		".flac", ".gsm", ".iklax", ".ivs", ".m4a", ".m4b", ".m4p",
-		".mmf", ".mogg", ".mp3", ".mpc", ".msv", ".nmf", ".oga",
-		".ogg", ".opus", ".pcm", ".ra", ".raw", ".rf64", ".sln",
-		".tta", ".voc", ".vox", ".wav", ".wma", ".wv",
-	}
-
-	lowerName := strings.ToLower(di.Name)
-	for _, ext := range audioExtensions {
-		if strings.HasSuffix(lowerName, ext) {
-			return true
-		}
-	}
-	return false
+	return di.hasExtension(audioExtensions)
 }
 
 func (di *DirectoryItem) GetFileIcon() string {
@@ -258,6 +271,11 @@ func directoryItemFromLink(href, name, currentPath string) (DirectoryItem, bool)
 	if directory {
 		itemType = TypeDirectory
 		name = strings.TrimSuffix(name, "/")
+	} else if !hasMediaExtension(name) && hasMediaExtension(decodedPath) {
+		// Some indexes use generic or truncated anchor text even though href
+		// contains the complete filename. Preserve that filename for display,
+		// classification, and aria2's output option.
+		name = pathpkg.Base(decodedPath)
 	}
 	return DirectoryItem{Name: name, Path: combineURLPath(currentPath, decodedPath), Type: itemType}, true
 }

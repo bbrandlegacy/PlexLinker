@@ -1,362 +1,200 @@
 # PlexLinker
 
-> **v2 development is active on `v2-development`.** The current `main` branch
-> remains the preserved v1 rollback line until Windows acceptance and explicit
-> merge approval. See [the v2 guide](docs/V2_GUIDE.md) and
-> [architecture](docs/V2_ARCHITECTURE.md).
+PlexLinker is a Windows-first terminal application for browsing an authenticated
+HTTPS directory and handing selected files to a persistent aria2 download
+service. It is designed to be operated through SSH: downloads continue after
+the SSH connection and TUI close.
 
-> **Interactive HTML Directory Browser & Batch Download Script Generator**
+> v2 is under review on `v2-development`. `main` and the
+> `baseline/v1-2026-10-23` tag preserve the original application until the
+> owner completes target-server acceptance and explicitly approves the merge.
 
-PlexLinker is a powerful Go CLI tool that browses authenticated web directories, intelligently categorizes media files, and generates aria2c download scripts with automatic Windows Task Scheduler integration for SSH-persistent downloads.
+## What v2 provides
 
-[![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go)](https://go.dev/)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/bbrandlegacy/PlexLinker)
+- Bubble Tea v2 TUI with keyboard-first Browser, Selection, Downloads, TV
+  Renamer, and Settings views.
+- Persistent aria2 JSON-RPC downloads with session recovery, live progress,
+  pause/resume, and removal.
+- Windows Task Scheduler management so aria2 survives SSH disconnects.
+- Native Windows drive-letter and UNC browsing, including `W:`, `N:`, and
+  saved destination favorites.
+- Linux systemd-user persistence with daemon fallback, plus macOS development
+  support.
+- Automatic filename-based Movie/TV classification and configurable default
+  library paths.
+- One-time destination overrides for individual selected files.
+- A built-in Windows acceptance doctor and a local authenticated demo server.
 
----
+## Requirements
 
-## ✨ Features
+- aria2 1.37 or newer (`aria2c` or `aria2c.exe` on `PATH`)
+- Windows 10/11 or Windows Server for the primary deployment
+- Go 1.26.10 when building from source
 
-### 🎯 Core Functionality
-- **Interactive Directory Browser** - Navigate authenticated web servers with keyboard controls
-- **Smart Media Categorization** - Automatically detects TV shows vs movies based on filename patterns
-- **Sequential TV Show Downloads** - Downloads episodes in order (S01E01, S01E02, etc.)
-- **Multi-Script Generation** - Creates separate scripts for movies, TV shows, and other files
-- **SSH-Persistent Execution** - Windows Task Scheduler integration keeps downloads running after disconnect
+Linux and macOS are supported. Windows is the primary production target.
 
-### 🎨 User Interface
-- **Terminal-based UI** - Clean, responsive interface with tcell
-- **Keyboard Navigation** - Arrow keys (hjkl support) for efficient browsing
-- **Visual Indicators** - Color-coded file types and selection status
-- **Cursor Memory** - Returns to exact position when navigating back
-- **Real-time Progress** - Selected file counter and status updates
+## Build
 
-### ⚙️ Advanced Features
-- **HTTP Basic Auth** - Secure authentication for web servers
-- **Configuration Management** - JSON-based settings with validation
-- **Debug Mode** - Detailed logging for troubleshooting
-- **Cross-Platform** - Windows (primary), macOS, and Linux support
-- **Script Viewer** - Review generated scripts before execution
-- **TV Show Folder Browser** - Create and select destination folders interactively
+Build v2 for the current machine:
 
----
+```bash
+go build -o plexlinker ./cmd/plexlinker-v2
+```
 
-## 📦 Installation
+Build all release targets:
 
-### Prerequisites
-- **Go 1.21+** (for building from source)
-- **aria2c** - Required for downloads ([Installation Guide](https://aria2.github.io/))
+```bash
+make build-all
+```
 
-### Download Pre-built Binary
+Artifacts are written to `dist/`. The release workflow builds Windows AMD64,
+Linux AMD64/ARM64, and macOS AMD64/ARM64 binaries.
 
-**Windows:**
+The preserved v1 application can still be built explicitly:
+
+```bash
+go build -o plexlinker-v1 ./cmd/plexlinker
+```
+
+## First run
+
+1. Put the PlexLinker v2 binary and aria2 on `PATH`.
+2. Run PlexLinker and press `5` for Settings.
+3. Configure the remote HTTPS URL and Basic Auth credentials.
+4. Configure the default Movies and TV destinations. Press `Enter` on either
+   path to browse available drives, mounts, and directories.
+5. Press `Ctrl+S`, exit, and restart PlexLinker so connection changes take
+   effect.
+
+PlexLinker starts or reconnects to aria2 before opening the TUI. On Windows,
+it creates a limited-privilege `PlexLinker_aria2` scheduled task. RPC listens
+on loopback and uses a generated secret stored in the per-user config.
+
+## Keyboard workflow
+
+| Key | View/action |
+|---|---|
+| `1` | Browser |
+| `2` | Selection |
+| `3` | Downloads |
+| `4` | TV Renamer |
+| `5` | Settings |
+| `Tab` / `Shift+Tab` | Cycle stateful views |
+| `q` / `Ctrl+C` | Quit |
+
+### Browser
+
+- `Up`/`Down` selects a row.
+- `Right` or `Enter` opens a folder; `Left` returns to its parent.
+- `Enter` or `Space` toggles a file selection.
+- `a` selects all files in the current directory.
+- `s` recursively selects files below the current directory.
+
+### Selection
+
+Each row is presented as `filename → destination`.
+
+- `Up`/`Down` selects a file.
+- `Left`/`Right` selects the filename or destination column.
+- `Enter` on the filename removes that selection.
+- `Enter` on the destination opens the directory picker for a one-time change.
+- `r` restores the highlighted file's inferred default destination.
+- `c` clears all selections.
+- `d` validates every destination and starts the downloads.
+
+Names containing markers such as `S01`, `S01E01`, `Season 1`, `1x01`, or
+`Episode 1` default to TV. Other filenames default to Movies.
+
+### Directory picker
+
+- `Up`/`Down` selects a drive or folder.
+- `Right` or `Enter` opens it; `Left` returns to its parent.
+- `Esc` accepts the current folder and returns to Selection or Settings.
+- `g` enters a path directly, including `\\server\share\folder`.
+- `n` creates and enters a directory.
+- `f` saves the current path as a favorite.
+
+### Downloads
+
+- `p` or `Enter` pauses/resumes the selected job.
+- `x` removes the selected job and its aria2 result.
+- `r` refreshes the list.
+
+## Configuration
+
+The v2 config is stored per user:
+
+- Windows: `%AppData%\PlexLinker\config.json`
+- macOS: `~/Library/Application Support/PlexLinker/config.json`
+- Linux: `${XDG_CONFIG_HOME:-~/.config}/PlexLinker/config.json`
+
+Set `PLEXLINKER_CONFIG` to select a custom config file. An existing v1 config
+beside the executable is copied on first use and is never modified in place.
+
+Supported environment overrides are `PLEX_BASE_URL`, `PLEX_USERNAME`,
+`PLEX_PASSWORD`, `PLEXLINKER_ARIA2_ENDPOINT`, and
+`PLEXLINKER_ARIA2_SECRET`.
+
+## Windows and SSH acceptance
+
+Run the doctor as the same Windows account used over SSH:
+
 ```powershell
-# Download from releases page
-curl -L https://github.com/bbrandlegacy/PlexLinker/releases/latest/download/plexlinker.exe -o plexlinker.exe
+plexlinker.exe doctor --destination 'W:\Movies'
 ```
 
-**macOS/Linux:**
+If mapped drives are not visible to OpenSSH or Task Scheduler, use a UNC path:
+
+```powershell
+plexlinker.exe doctor --destination '\\server\share\Movies'
+```
+
+Then start a small download, disconnect SSH, reconnect later, and confirm the
+same job in Downloads. That final test validates the real VPN account, storage
+mapping, and server policy that CI cannot reproduce.
+
+aria2 persistence does not require a terminal multiplexer. Use psmux on Windows
+or tmux on Linux only when the exact TUI screen should remain attached.
+
+## Local development without production links
+
+Start the authenticated fixture server:
+
 ```bash
-# Download from releases page
-curl -L https://github.com/bbrandlegacy/PlexLinker/releases/latest/download/plexlinker -o plexlinker
-chmod +x plexlinker
+go run ./cmd/plexlinker-demo-server
 ```
 
-### Build from Source
+In another terminal:
 
 ```bash
-# Clone repository
-git clone https://github.com/bbrandlegacy/PlexLinker.git
-cd PlexLinker
-
-# Build for current platform
-go build -o plexlinker ./cmd/plexlinker
-
-# Build for Windows (cross-compile)
-GOOS=windows GOARCH=amd64 go build -o plexlinker.exe ./cmd/plexlinker
+PLEX_BASE_URL=http://127.0.0.1:8787/ \
+PLEX_USERNAME=plex \
+PLEX_PASSWORD=demo \
+PLEXLINKER_ARIA2_SECRET=demo-rpc-secret \
+go run ./cmd/plexlinker-v2
 ```
 
----
+The fixture exposes nested Movies and TV folders with tiny deterministic files.
 
-## 🚀 Quick Start
+## Verification
 
-1. **First Run** - Configure settings:
 ```bash
-./plexlinker
-# Select "Settings" → Configure base URL, username, password, and paths
-```
-
-2. **Browse & Select Files**:
-   - Navigate directories with arrow keys or `hjkl`
-   - Press `Enter` to select files or enter directories
-   - Press `2` for recursive select all
-   - Press `4` to view selected files
-
-3. **Generate & Run Scripts**:
-   - Press `5` to open script generation preview
-   - Review auto-categorization (TV shows vs movies)
-   - Press `b` to browse TV show destination folders
-   - Press `5` to generate and execute (via Task Scheduler)
-   - Press `6` to generate only (no execution)
-
----
-
-## 📖 Usage Guide
-
-### Configuration
-
-PlexLinker stores settings in `plexlinker.json`:
-
-```json
-{
-  "base_url": "https://example.com/media/",
-  "username": "your_username",
-  "password": "your_password",
-  "script_format": "bat",
-  "debug_mode": false,
-  "movies_path": "W:\\movies",
-  "tv_shows_path": "W:\\shows",
-  "other_path": "W:\\other",
-  "usernames": ["john", "jane"],
-  "last_user": "john"
-}
-```
-
-**Path Options:**
-- Use `"auto"` for platform defaults (`W:\movies` on Windows, `/w/movies` on Unix)
-- Specify custom absolute paths for each category
-
-### Keyboard Controls
-
-#### Directory Browser
-| Key | Action |
-|-----|--------|
-| `↑↓` or `jk` | Navigate up/down |
-| `Enter` | Select file / Enter directory |
-| `Backspace` or `h` | Go up one directory |
-| `Esc` or `0` | Exit to main menu |
-| `1` | Select all in current directory |
-| `2` | Recursive select all (scans subdirectories) |
-| `3` | Deselect all |
-| `4` | Show selected files viewer |
-| `5` | Open script generation preview |
-| `Tab` | Switch to running script window (Windows only) |
-
-#### Script Generation Preview
-| Key | Action |
-|-----|--------|
-| `5` or `Enter` | Generate & Run (Task Scheduler) |
-| `6` | Generate Only (save scripts, no execution) |
-| `b` | Browse TV show destination folders |
-| `Esc` | Cancel and return |
-
-### Auto-Categorization
-
-PlexLinker automatically detects TV shows using these patterns:
-- `s01`, `s1e1`, `s01e01` - Season/episode indicators
-- `1x01`, `2x05` - Alternative format
-- `season 1`, `episode 5` - Verbose format
-
-**Examples:**
-```
-Breaking.Bad.S01E01.mkv          → TV Shows
-The.Office.2x03.720p.mkv         → TV Shows
-Inception.2010.1080p.mkv         → Movies
-Documentary.Special.mkv          → Movies
-```
-
-### Script Execution Modes
-
-#### Task Scheduler Mode (Windows, Recommended)
-- ✅ **SSH-safe** - Downloads continue after disconnect
-- ✅ PowerShell window opens and stays visible
-- ✅ Automatic task cleanup after completion
-- ✅ Multiple concurrent downloads
-
-#### Direct Execution Mode (Fallback)
-- ⚠️ **SSH-unsafe** - Downloads stop if SSH disconnects
-- Used automatically if Task Scheduler fails
-- Warning displayed in status
-
-#### Generate Only Mode (Key 6)
-- 📁 Scripts saved to `scripts/` folder
-- No automatic execution
-- Manual script execution anytime
-
----
-
-## 🎬 Use Cases
-
-### Primary: Personal Media Server Management
-**Scenario:** Downloading media to a Plex/Jellyfin server via SSH
-- SSH into remote Windows server
-- Browse and select files
-- Generate scripts with Task Scheduler
-- Disconnect SSH - downloads continue
-- Organizes by media type automatically
-
-### Other Potential Use Cases
-
-#### 1. **Web Scraping & Archival**
-- Archive entire authenticated web directories
-- Preserve directory structure
-- Sequential downloads for rate-limited sites
-- Resume support via aria2c
-
-#### 2. **Scientific Data Collection**
-- Download datasets from authenticated repositories
-- Organize by data type automatically
-- Batch processing of large file sets
-- SSH-persistent for long-running downloads
-
-#### 3. **Corporate File Distribution**
-- Browse internal file servers
-- Generate download scripts for teams
-- Category-based organization
-- Audit trail via debug logs
-
-#### 4. **Backup & Sync Operations**
-- Selective backup of web-hosted files
-- Mirror directory structures locally
-- Incremental downloads (aria2c conditional get)
-- Automated via generated scripts
-
-#### 5. **Educational Content Management**
-- Download course materials from authenticated portals
-- Organize by subject/semester automatically
-- Share download scripts with students
-- Batch operations for multiple courses
-
-#### 6. **Research Data Management**
-- Access authenticated research databases
-- Categorize publications, datasets, etc.
-- Sequential download for quota compliance
-- Cross-platform support for lab environments
-
----
-
-## 🏗️ Architecture
-
-```
-plexlinker/
-├── cmd/plexlinker/          # Application entry point
-│   └── main.go              # State machine, signal handling
-├── internal/
-│   ├── browser/             # HTML parsing, media filtering
-│   ├── client/              # HTTP client with auth
-│   ├── config/              # JSON config management
-│   ├── downloader/          # Script generation & execution
-│   │   ├── categorizer.go   # TV show detection & sorting
-│   │   ├── generator.go     # Multi-script generation
-│   │   ├── exec_windows.go  # Task Scheduler integration
-│   │   └── exec_default.go  # Unix execution
-│   ├── logger/              # Centralized debug logging
-│   ├── paths/               # Platform-aware defaults
-│   └── ui/                  # Terminal UI components
-│       ├── browser.go       # Directory browser UI
-│       ├── menu.go          # Main menu
-│       ├── settings.go      # Settings editor
-│       ├── script_generator.go  # Script preview UI
-│       └── ...
-└── test/
-    └── fixtures/            # Test data
-```
-
----
-
-## 🛠️ Development
-
-### Build Commands
-```bash
-# Build for current platform
-go build -o plexlinker ./cmd/plexlinker
-
-# Build for Windows
-GOOS=windows GOARCH=amd64 go build -o plexlinker.exe ./cmd/plexlinker
-
-# Run tests
 go test ./...
-
-# Run linters
+go test -race ./...
 go vet ./...
-go fmt ./...
 ```
 
-### Debug Mode
-Enable detailed logging in Settings → Debug Mode:
-```bash
-# Logs written to plexlinker_debug.log
-tail -f plexlinker_debug.log
-```
+The CI matrix tests current and pinned Go on Windows, Linux, and macOS, runs
+golangci-lint, CodeQL, dependency review, govulncheck, cross-builds release
+artifacts, and performs a native Windows aria2 persistence acceptance test.
 
-Logs include:
-- HTTP requests/responses
-- Task Scheduler commands
-- UI state transitions
-- File selection operations
+## Documentation
 
----
+- [v2 operator guide](docs/V2_GUIDE.md)
+- [v2 architecture](docs/V2_ARCHITECTURE.md)
+- [v2 roadmap and acceptance state](docs/V2_ROADMAP.md)
+- [changelog](CHANGELOG.md)
 
-## 🤝 Contributing
+## License
 
-Contributions welcome! Please:
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-### Code Style
-- Follow Go conventions (`gofmt`, `go vet`)
-- Add tests for new features
-- Update documentation
-
----
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 🙏 Acknowledgments
-
-- **[tcell](https://github.com/gdamore/tcell)** - Terminal UI library
-- **[aria2](https://aria2.github.io/)** - Download utility
-- Inspired by the need for SSH-persistent downloads on remote Windows servers
-
----
-
-## 🐛 Troubleshooting
-
-### Task Scheduler Not Working
-- Enable debug mode to see Task Scheduler logs
-- Check Task Scheduler service is running: `sc query schedule`
-- Verify `plexlinker_launcher.bat` exists in executable directory
-
-### Downloads Not Sequential
-- TV shows are sorted automatically by season/episode
-- Verify filenames contain season indicators (`s01e01`, `1x01`, etc.)
-- Check categorization in script generation preview
-
-### PowerShell Window Not Opening
-- Verify Task Scheduler created task successfully
-- Check Windows execution policy: `Get-ExecutionPolicy`
-- Review debug logs for Task Scheduler errors
-
-### SSH Disconnect Stops Downloads
-- This means fallback mode was used (check status message)
-- Task Scheduler service may be disabled
-- Enable debug mode to diagnose Task Scheduler failures
-
----
-
-## 📮 Support
-
-- **Issues:** [GitHub Issues](https://github.com/bbrandlegacy/PlexLinker/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/bbrandlegacy/PlexLinker/discussions)
-- **Documentation:** [Wiki](https://github.com/bbrandlegacy/PlexLinker/wiki)
-
----
-
-**Made with ❤️ for the media server community**
+MIT. See [LICENSE](LICENSE).
