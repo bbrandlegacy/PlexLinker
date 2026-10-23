@@ -31,6 +31,10 @@
 - Make network and filesystem work cancellable and event-driven.
 - Add headless model tests and a local demo directory server.
 
+Initial implementation uses Bubble Tea 2.1, Bubbles 2.2, and Lip Gloss 2.0,
+which require Go 1.26. The legacy tcell executable remains buildable during the
+migration and is replaced only after Windows acceptance testing.
+
 ## Stage 4 — Service integration
 
 - Windows: Task Scheduler-managed aria2, with optional psmux convenience.
