@@ -16,7 +16,9 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"plexlinker/internal/browser"
 	"plexlinker/internal/config"
+	media "plexlinker/internal/downloader"
 	"plexlinker/internal/downloads"
+	"plexlinker/internal/paths"
 	"plexlinker/internal/storage"
 )
 
@@ -25,12 +27,25 @@ type Tab int
 const (
 	TabRemote Tab = iota
 	TabSelection
-	TabDestination
 	TabDownloads
 	TabSettings
 )
 
-type selectedFile struct{ URL, Name string }
+type selectedFile struct {
+	URL, Name          string
+	Destination        string
+	DefaultDestination string
+	Category           media.MediaCategory
+}
+
+type destinationPickerTarget int
+
+const (
+	pickerNone destinationPickerTarget = iota
+	pickerSelection
+	pickerMoviesSetting
+	pickerTVSetting
+)
 
 type Model struct {
 	services           Services
@@ -42,12 +57,16 @@ type Model struct {
 	remoteItems        []browser.DirectoryItem
 	remoteCursor       int
 	selected           map[string]selectedFile
+	selectionCursor    int
+	selectionColumn    int
 	volumes            []storage.Volume
 	destinationPath    string
 	destinationEntries []storage.Entry
 	destinationCursor  int
 	destinationInput   textinput.Model
 	destinationPrompt  string
+	pickerTarget       destinationPickerTarget
+	pickerSelectionURL string
 	jobs               []downloads.Job
 	downloadCursor     int
 	progress           progress.Model
@@ -109,8 +128,11 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.progress.SetWidth(max(8, min(28, msg.Width/4)))
 	case tea.KeyPressMsg:
-		if m.tab == TabDestination && m.destinationPrompt != "" {
+		if m.pickerTarget != pickerNone && m.destinationPrompt != "" {
 			return m.handleDestinationPrompt(msg)
+		}
+		if m.pickerTarget != pickerNone {
+			return m.handleDestinationPickerKey(msg)
 		}
 		if m.tab == TabSettings {
 			return m.handleSettingsKey(msg)
@@ -157,6 +179,9 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case directoryLoadedMsg:
 		if msg.err != nil {
 			m.status = "Destination error: " + msg.err.Error()
+			if m.pickerTarget != pickerNone {
+				m.destinationPath, m.destinationEntries, m.destinationCursor = "", nil, 0
+			}
 		} else {
 			directories := make([]storage.Entry, 0, len(msg.entries))
 			for _, entry := range msg.entries {
@@ -178,8 +203,9 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.status = fmt.Sprintf("Submitted %d with errors: %v", msg.count, msg.err)
 		} else {
-			m.status = fmt.Sprintf("Queued %d downloads", msg.count)
+			m.status = fmt.Sprintf("Started %d downloads", msg.count)
 			m.selected = make(map[string]selectedFile)
+			m.selectionCursor = 0
 		}
 		return m, m.loadJobs()
 	case actionMsg:
@@ -203,15 +229,11 @@ func (m *Model) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.tab = TabRemote
 	case "2":
 		m.tab = TabSelection
+		m.clampSelectionCursor()
 	case "3":
-		m.tab = TabDestination
-	case "4":
 		m.tab = TabDownloads
 		return m, m.loadJobs()
-	case "5":
-		m.tab = TabSettings
-		m.focusSetting(0)
-	case "6":
+	case "4":
 		if m.services.RenamerCommand == nil {
 			m.status = "TV renamer is unavailable"
 			return m, nil
@@ -222,18 +244,33 @@ func (m *Model) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			}
 			return actionMsg{message: "Returned from TV renamer"}
 		})
+	case "5":
+		m.tab = TabSettings
+		m.focusSetting(0)
 	case "tab":
-		m.tab = (m.tab + 1) % 5
+		m.tab = (m.tab + 1) % 4
 	case "shift+tab":
-		m.tab = (m.tab + 4) % 5
+		m.tab = (m.tab + 3) % 4
 	case "up", "k":
 		m.move(-1)
 	case "down", "j":
 		m.move(1)
+	case "right", "l":
+		if m.tab == TabRemote {
+			return m, m.openRemoteDirectory()
+		}
+		if m.tab == TabSelection && len(m.selected) > 0 {
+			m.selectionColumn = 1
+		}
+	case "left", "h", "backspace":
+		if m.tab == TabRemote {
+			return m, m.back()
+		}
+		if m.tab == TabSelection {
+			m.selectionColumn = 0
+		}
 	case "enter", " ":
 		return m, m.activate()
-	case "backspace", "h":
-		return m, m.back()
 	case "a":
 		m.selectAll()
 	case "s":
@@ -243,27 +280,21 @@ func (m *Model) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, m.selectRecursive(m.remotePath)
 		}
 	case "c":
-		m.selected = make(map[string]selectedFile)
-		m.status = "Selection cleared"
+		if m.tab == TabSelection {
+			m.selected = make(map[string]selectedFile)
+			m.selectionCursor = 0
+			m.status = "Selection cleared"
+		}
 	case "d":
-		return m, m.submitSelected()
-	case "g":
-		if m.tab == TabDestination {
-			m.openDestinationPrompt("go to path", "")
-			return m, nil
-		}
-	case "n":
-		if m.tab == TabDestination {
-			m.openDestinationPrompt("create directory", childPathPrefix(m.destinationPath))
-			return m, nil
-		}
-	case "f":
-		if m.tab == TabDestination {
-			return m, m.favoriteDestination()
+		if m.tab == TabSelection {
+			return m, m.submitSelected()
 		}
 	case "r":
 		if m.tab == TabRemote {
 			return m, m.loadRemote(m.remotePath)
+		}
+		if m.tab == TabSelection {
+			m.resetSelectedDestination()
 		}
 		if m.tab == TabDownloads {
 			return m, m.loadJobs()
@@ -282,14 +313,7 @@ func (m *Model) move(delta int) {
 	case TabRemote:
 		length = len(m.remoteItems)
 	case TabSelection:
-		return
-	case TabDestination:
-		if m.destinationPath == "" {
-			length = len(m.volumes)
-		} else {
-			length = len(m.destinationEntries)
-		}
-		cursor = &m.destinationCursor
+		length, cursor = len(m.selected), &m.selectionCursor
 	case TabDownloads:
 		length = len(m.jobs)
 		cursor = &m.downloadCursor
@@ -319,23 +343,11 @@ func (m *Model) activate() tea.Cmd {
 			delete(m.selected, url)
 			m.status = "Deselected " + item.Name
 		} else {
-			m.selected[url] = selectedFile{URL: url, Name: item.Name}
+			m.selected[url] = m.makeSelectedFile(url, item.Name)
 			m.status = "Selected " + item.Name
 		}
-	case TabDestination:
-		if m.destinationPath == "" {
-			if len(m.volumes) == 0 {
-				return nil
-			}
-			return m.loadDirectory(m.volumes[m.destinationCursor].Path)
-		}
-		if len(m.destinationEntries) == 0 {
-			return nil
-		}
-		entry := m.destinationEntries[m.destinationCursor]
-		if entry.IsDir {
-			return m.loadDirectory(entry.Path)
-		}
+	case TabSelection:
+		return m.activateSelection()
 	case TabDownloads:
 		return m.togglePause()
 	}
@@ -346,15 +358,179 @@ func (m *Model) back() tea.Cmd {
 	if m.tab == TabRemote && m.remotePath != "" {
 		return m.loadRemote(browser.GetParentPath(m.remotePath))
 	}
-	if m.tab == TabDestination && m.destinationPath != "" {
-		parent := filepath.Dir(m.destinationPath)
-		if parent == m.destinationPath || parent == "." {
-			m.destinationPath, m.destinationEntries, m.destinationCursor = "", nil, 0
-			return nil
-		}
-		return m.loadDirectory(parent)
-	}
 	return nil
+}
+
+func (m *Model) openRemoteDirectory() tea.Cmd {
+	if len(m.remoteItems) == 0 {
+		return nil
+	}
+	item := m.remoteItems[m.remoteCursor]
+	if item.Type != browser.TypeDirectory {
+		return nil
+	}
+	m.loading = true
+	return m.loadRemote(item.Path)
+}
+
+func (m *Model) selectionFiles() []selectedFile {
+	files := make([]selectedFile, 0, len(m.selected))
+	for _, file := range m.selected {
+		files = append(files, file)
+	}
+	sort.Slice(files, func(i, j int) bool {
+		if files[i].Name == files[j].Name {
+			return files[i].URL < files[j].URL
+		}
+		return strings.ToLower(files[i].Name) < strings.ToLower(files[j].Name)
+	})
+	return files
+}
+
+func (m *Model) clampSelectionCursor() {
+	if len(m.selected) == 0 {
+		m.selectionCursor = 0
+		return
+	}
+	if m.selectionCursor >= len(m.selected) {
+		m.selectionCursor = len(m.selected) - 1
+	}
+}
+
+func (m *Model) activeSelection() (selectedFile, bool) {
+	m.clampSelectionCursor()
+	files := m.selectionFiles()
+	if len(files) == 0 {
+		return selectedFile{}, false
+	}
+	return files[m.selectionCursor], true
+}
+
+func (m *Model) defaultDestination(category media.MediaCategory) string {
+	var path string
+	if m.services.Config != nil {
+		if category == media.CategoryTVShows {
+			path = m.services.Config.TVShowsPath
+		} else {
+			path = m.services.Config.MoviesPath
+		}
+	}
+	if category == media.CategoryTVShows {
+		return paths.ResolveAutoPath(path, "shows")
+	}
+	return paths.ResolveAutoPath(path, "movies")
+}
+
+func (m *Model) makeSelectedFile(url, name string) selectedFile {
+	category := media.GetCategory(name)
+	destination := m.defaultDestination(category)
+	return selectedFile{URL: url, Name: name, Destination: destination, DefaultDestination: destination, Category: category}
+}
+
+func (m *Model) activateSelection() tea.Cmd {
+	file, ok := m.activeSelection()
+	if !ok {
+		return nil
+	}
+	if m.selectionColumn == 0 {
+		delete(m.selected, file.URL)
+		m.clampSelectionCursor()
+		m.status = "Removed " + file.Name
+		return nil
+	}
+	return m.openDestinationPicker(pickerSelection, file.Destination, file.URL)
+}
+
+func (m *Model) resetSelectedDestination() {
+	file, ok := m.activeSelection()
+	if !ok {
+		return
+	}
+	file.Destination = file.DefaultDestination
+	m.selected[file.URL] = file
+	m.status = "Reset destination for " + file.Name
+}
+
+func (m *Model) openDestinationPicker(target destinationPickerTarget, path, selectionURL string) tea.Cmd {
+	m.pickerTarget, m.pickerSelectionURL = target, selectionURL
+	m.destinationPrompt = ""
+	m.destinationCursor = 0
+	path = strings.TrimSpace(path)
+	if path == "" || path == "auto" {
+		m.destinationPath, m.destinationEntries = "", nil
+		return nil
+	}
+	return m.loadDirectory(path)
+}
+
+func (m *Model) finishDestinationPicker() {
+	path, target, url := m.destinationPath, m.pickerTarget, m.pickerSelectionURL
+	if path != "" {
+		switch target {
+		case pickerSelection:
+			if file, ok := m.selected[url]; ok {
+				file.Destination = path
+				m.selected[url] = file
+			}
+		case pickerMoviesSetting:
+			m.settingsInputs[settingMoviesPath].SetValue(path)
+		case pickerTVSetting:
+			m.settingsInputs[settingTVPath].SetValue(path)
+		}
+	}
+	m.pickerTarget, m.pickerSelectionURL = pickerNone, ""
+	m.destinationPrompt = ""
+	m.status = "Destination selected: " + path
+}
+
+func (m *Model) handleDestinationPickerKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch key.String() {
+	case "ctrl+c", "q":
+		return m, tea.Quit
+	case "esc":
+		m.finishDestinationPicker()
+		return m, nil
+	case "up", "k":
+		length := len(m.volumes)
+		if m.destinationPath != "" {
+			length = len(m.destinationEntries)
+		}
+		if length > 0 {
+			m.destinationCursor = (m.destinationCursor - 1 + length) % length
+		}
+	case "down", "j":
+		length := len(m.volumes)
+		if m.destinationPath != "" {
+			length = len(m.destinationEntries)
+		}
+		if length > 0 {
+			m.destinationCursor = (m.destinationCursor + 1) % length
+		}
+	case "enter", "right", "l":
+		if m.destinationPath == "" {
+			if len(m.volumes) > 0 {
+				return m, m.loadDirectory(m.volumes[m.destinationCursor].Path)
+			}
+		} else if len(m.destinationEntries) > 0 {
+			return m, m.loadDirectory(m.destinationEntries[m.destinationCursor].Path)
+		}
+	case "left", "h", "backspace":
+		if m.destinationPath != "" {
+			parent := filepath.Dir(m.destinationPath)
+			if parent == m.destinationPath || parent == "." {
+				m.destinationPath, m.destinationEntries, m.destinationCursor = "", nil, 0
+			} else {
+				return m, m.loadDirectory(parent)
+			}
+		}
+	case "g":
+		m.openDestinationPrompt("go to path", "")
+	case "n":
+		m.openDestinationPrompt("create directory", childPathPrefix(m.destinationPath))
+	case "f":
+		return m, m.favoriteDestination()
+	}
+	return m, nil
 }
 
 func (m *Model) openDestinationPrompt(mode, value string) {
@@ -431,13 +607,15 @@ func (m *Model) selectAll() {
 	for _, item := range m.remoteItems {
 		if item.Type == browser.TypeFile {
 			url := m.services.Remote.FullURL(item.Path)
-			m.selected[url] = selectedFile{URL: url, Name: item.Name}
+			m.selected[url] = m.makeSelectedFile(url, item.Name)
 		}
 	}
 	m.status = fmt.Sprintf("Selected %d files", len(m.selected))
 }
 
 func (m *Model) selectRecursive(root string) tea.Cmd {
+	movieDestination := m.defaultDestination(media.CategoryMovies)
+	tvDestination := m.defaultDestination(media.CategoryTVShows)
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
@@ -463,7 +641,12 @@ func (m *Model) selectRecursive(root string) tea.Cmd {
 					queue = append(queue, item.Path)
 					continue
 				}
-				files = append(files, selectedFile{URL: m.services.Remote.FullURL(item.Path), Name: item.Name})
+				category := media.GetCategory(item.Name)
+				destination := movieDestination
+				if category == media.CategoryTVShows {
+					destination = tvDestination
+				}
+				files = append(files, selectedFile{URL: m.services.Remote.FullURL(item.Path), Name: item.Name, Destination: destination, DefaultDestination: destination, Category: category})
 			}
 		}
 		return recursiveSelectedMsg{files: files}
@@ -475,20 +658,25 @@ func (m *Model) submitSelected() tea.Cmd {
 		m.status = "Select files first"
 		return nil
 	}
-	if m.destinationPath == "" {
-		m.status = "Choose a destination first"
-		m.tab = TabDestination
-		return nil
-	}
 	requests := make([]downloads.Request, 0, len(m.selected))
 	for _, file := range m.selected {
-		requests = append(requests, downloads.Request{URL: file.URL, Filename: file.Name, Destination: m.destinationPath, Username: m.services.Username, Password: m.services.Password})
+		if strings.TrimSpace(file.Destination) == "" {
+			m.status = "Choose a destination for " + file.Name
+			return nil
+		}
+		requests = append(requests, downloads.Request{URL: file.URL, Filename: file.Name, Destination: file.Destination, Username: m.services.Username, Password: m.services.Password})
 	}
 	sort.Slice(requests, func(i, j int) bool { return requests[i].URL < requests[j].URL })
 	m.loading = true
 	return func() tea.Msg {
-		if err := m.services.Directories.IsWritable(m.destinationPath); err != nil {
-			return submittedMsg{err: err}
+		checked := make(map[string]bool)
+		for _, request := range requests {
+			if !checked[request.Destination] {
+				if err := m.services.Directories.IsWritable(request.Destination); err != nil {
+					return submittedMsg{err: err}
+				}
+				checked[request.Destination] = true
+			}
 		}
 		results, err := m.services.Downloads.Submit(context.Background(), requests)
 		return submittedMsg{count: len(results), err: err}
@@ -548,12 +736,23 @@ func (m *Model) loadJobs() tea.Cmd {
 }
 func tick() tea.Cmd { return tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return tickMsg(t) }) }
 
-var settingLabels = []string{"Remote base URL", "HTTP username", "HTTP password", "aria2 RPC endpoint", "aria2 RPC secret", "Max concurrent downloads"}
+const (
+	settingBaseURL = iota
+	settingUsername
+	settingPassword
+	settingMoviesPath
+	settingTVPath
+	settingAriaEndpoint
+	settingAriaSecret
+	settingConcurrency
+)
+
+var settingLabels = []string{"Remote base URL", "HTTP username", "HTTP password", "Default movie path (Enter to browse)", "Default TV path (Enter to browse)", "aria2 RPC endpoint", "aria2 RPC secret", "Max concurrent downloads"}
 
 func (m *Model) initializeSettings() {
-	values := []string{"", "", "", "http://127.0.0.1:6800/jsonrpc", "", "3"}
+	values := []string{"", "", "", "auto", "auto", "http://127.0.0.1:6800/jsonrpc", "", "3"}
 	if cfg := m.services.Config; cfg != nil {
-		values = []string{cfg.BaseURL, cfg.Username, cfg.Password, cfg.Aria2Endpoint, cfg.Aria2Secret, strconv.Itoa(cfg.MaxConcurrentDownloads)}
+		values = []string{cfg.BaseURL, cfg.Username, cfg.Password, cfg.MoviesPath, cfg.TVShowsPath, cfg.Aria2Endpoint, cfg.Aria2Secret, strconv.Itoa(cfg.MaxConcurrentDownloads)}
 	}
 	m.settingsInputs = make([]textinput.Model, len(values))
 	for index, value := range values {
@@ -561,7 +760,7 @@ func (m *Model) initializeSettings() {
 		input.SetValue(value)
 		input.SetWidth(60)
 		input.Prompt = ""
-		if index == 2 || index == 4 {
+		if index == settingPassword || index == settingAriaSecret {
 			input.EchoMode = textinput.EchoPassword
 			input.EchoCharacter = '•'
 		}
@@ -599,6 +798,18 @@ func (m *Model) handleSettingsKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "ctrl+s":
 		return m, m.saveSettings()
+	case "enter":
+		if m.settingsCursor == settingMoviesPath || m.settingsCursor == settingTVPath {
+			for i := range m.settingsInputs {
+				m.settingsInputs[i].Blur()
+			}
+			target, mediaType := pickerMoviesSetting, "movies"
+			if m.settingsCursor == settingTVPath {
+				target, mediaType = pickerTVSetting, "shows"
+			}
+			path := paths.ResolveAutoPath(strings.TrimSpace(m.settingsInputs[m.settingsCursor].Value()), mediaType)
+			return m, m.openDestinationPicker(target, path, "")
+		}
 	}
 	var command tea.Cmd
 	m.settingsInputs[m.settingsCursor], command = m.settingsInputs[m.settingsCursor].Update(key)
@@ -611,12 +822,14 @@ func (m *Model) saveSettings() tea.Cmd {
 		if cfg == nil {
 			cfg = config.NewConfig()
 		}
-		cfg.BaseURL = m.settingsInputs[0].Value()
-		cfg.Username = m.settingsInputs[1].Value()
-		cfg.Password = m.settingsInputs[2].Value()
-		cfg.Aria2Endpoint = m.settingsInputs[3].Value()
-		cfg.Aria2Secret = m.settingsInputs[4].Value()
-		concurrent, err := strconv.Atoi(m.settingsInputs[5].Value())
+		cfg.BaseURL = m.settingsInputs[settingBaseURL].Value()
+		cfg.Username = m.settingsInputs[settingUsername].Value()
+		cfg.Password = m.settingsInputs[settingPassword].Value()
+		cfg.MoviesPath = m.settingsInputs[settingMoviesPath].Value()
+		cfg.TVShowsPath = m.settingsInputs[settingTVPath].Value()
+		cfg.Aria2Endpoint = m.settingsInputs[settingAriaEndpoint].Value()
+		cfg.Aria2Secret = m.settingsInputs[settingAriaSecret].Value()
+		concurrent, err := strconv.Atoi(m.settingsInputs[settingConcurrency].Value())
 		if err != nil || concurrent < 1 {
 			return actionMsg{err: fmt.Errorf("max concurrent downloads must be a positive number")}
 		}
@@ -649,7 +862,7 @@ func (m *Model) View() tea.View {
 	}
 	b.WriteString(accent.Render(title))
 	b.WriteString("  ")
-	for index, label := range []string{"1 Remote", "2 Selection", "3 Destination", "4 Downloads", "5 Settings"} {
+	for index, label := range []string{"1 Browser", "2 Selection", "3 Downloads"} {
 		style := muted
 		if int(m.tab) == index {
 			style = accent
@@ -657,22 +870,30 @@ func (m *Model) View() tea.View {
 		b.WriteString(style.Render("[" + label + "]"))
 		b.WriteString(" ")
 	}
-	b.WriteString(muted.Render("[6 TV Renamer]"))
+	b.WriteString(muted.Render("[4 TV Renamer]"))
+	b.WriteString(" ")
+	settingsStyle := muted
+	if m.tab == TabSettings && m.pickerTarget == pickerNone {
+		settingsStyle = accent
+	}
+	b.WriteString(settingsStyle.Render("[5 Settings]"))
 	b.WriteString(" ")
 	b.WriteString("\n")
 	b.WriteString(muted.Render(strings.Repeat("─", max(1, m.width))))
 	b.WriteString("\n")
-	switch m.tab {
-	case TabRemote:
-		m.viewRemote(&b)
-	case TabSelection:
-		m.viewSelection(&b)
-	case TabDestination:
+	if m.pickerTarget != pickerNone {
 		m.viewDestination(&b)
-	case TabDownloads:
-		m.viewDownloads(&b)
-	case TabSettings:
-		m.viewSettings(&b)
+	} else {
+		switch m.tab {
+		case TabRemote:
+			m.viewRemote(&b)
+		case TabSelection:
+			m.viewSelection(&b)
+		case TabDownloads:
+			m.viewDownloads(&b)
+		case TabSettings:
+			m.viewSettings(&b)
+		}
 	}
 	b.WriteString("\n")
 	b.WriteString(muted.Render(strings.Repeat("─", max(1, m.width))))
@@ -682,10 +903,18 @@ func (m *Model) View() tea.View {
 		b.WriteString("  …")
 	}
 	b.WriteString("\n")
-	if m.tab == TabSettings {
+	if m.pickerTarget != pickerNone {
+		b.WriteString(muted.Render("↑/↓ choose • Enter/→ open • ← parent • Esc use current folder • g path • n new folder • f favorite"))
+	} else if m.tab == TabSettings {
 		b.WriteString(muted.Render("Tab/↑/↓ fields • Ctrl+S save • Esc return"))
+	} else if m.tab == TabSelection {
+		b.WriteString(muted.Render("↑/↓ item • ←/→ name/destination • Enter remove/browse • r reset • d Download • c clear"))
+	} else if m.tab == TabRemote {
+		b.WriteString(muted.Render("↑/↓ navigate • →/Enter open • ← parent • Enter file select • a current • s recursive • q quit"))
+	} else if m.tab == TabDownloads {
+		b.WriteString(muted.Render("↑/↓ navigate • p/Enter pause/resume • x remove • r refresh • q quit"))
 	} else {
-		b.WriteString(muted.Render("Tab switch • ↑/↓ navigate • Enter select/open • a current • s recursive • d queue • q quit"))
+		b.WriteString(muted.Render("Tab switch • q quit"))
 	}
 	view := tea.NewView(b.String())
 	view.AltScreen = true
@@ -711,16 +940,24 @@ func (m *Model) viewRemote(b *strings.Builder) {
 }
 func (m *Model) viewSelection(b *strings.Builder) {
 	fmt.Fprintf(b, "Selection: %d files\n", len(m.selected))
-	files := make([]selectedFile, 0, len(m.selected))
-	for _, f := range m.selected {
-		files = append(files, f)
+	files := m.selectionFiles()
+	start, end := m.visibleRange(m.selectionCursor, len(files))
+	for i := start; i < end; i++ {
+		file := files[i]
+		name, destination := file.Name, file.Destination
+		if i == m.selectionCursor && m.selectionColumn == 0 {
+			name = selectedStyle.Render(name)
+		}
+		if i == m.selectionCursor && m.selectionColumn == 1 {
+			destination = selectedStyle.Render(destination)
+		}
+		category := "MOVIE"
+		if file.Category == media.CategoryTVShows {
+			category = "TV"
+		}
+		fmt.Fprintf(b, "  %-5s %s %s %s\n", category, name, muted.Render("→"), destination)
 	}
-	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
-	_, end := m.visibleRange(0, len(files))
-	for _, file := range files[:end] {
-		b.WriteString("  " + file.Name + "\n")
-	}
-	m.scrollHint(b, 0, end, len(files))
+	m.scrollHint(b, start, end, len(files))
 }
 func (m *Model) viewDestination(b *strings.Builder) {
 	if m.destinationPath == "" {

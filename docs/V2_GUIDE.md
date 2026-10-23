@@ -31,17 +31,23 @@ current user's config directory.
 
 ## Normal workflow
 
-- `1`: browse the remote HTTPS directory.
-- `Enter`/`Space`: open a directory or toggle a file.
+- `1`: browse the remote HTTPS directory. `Right`/`Enter` opens a folder and
+  `Left` returns to its parent; `Enter`/`Space` toggles a file.
 - `a`: select all media files in the current directory.
 - `s`: recursively scan and select media below the current directory.
-- `3`: choose a destination drive, mount, favorite, or UNC path.
-- `g`: type a destination directly, including `\\server\share\folder`.
-- `n`: create and enter a destination directory.
-- `f`: save the current destination as a favorite.
-- `d`: validate the destination and submit selected files to aria2.
-- `4`: monitor jobs; `p` pauses/resumes and `x` removes the highlighted job.
-- `6`: temporarily hand the terminal to the TV renamer and return when done.
+- `2`: review selections. PlexLinker infers TV from season/episode markers such
+  as `S01`, `S01E01`, `Season 1`, and `1x01`; other names default to Movies.
+- In Selection, use `Up`/`Down` for rows and `Left`/`Right` for the filename or
+  destination. `Enter` on the filename removes it; `Enter` on the destination
+  opens its one-time directory picker. `r` resets only that row to its inferred
+  default, `c` clears all rows, and `d` starts the selected downloads.
+- In a directory picker, `Right`/`Enter` opens a drive or folder, `Left` moves
+  to its parent, and `Esc` accepts the current folder. `g` types a path such as
+  `\\server\share\folder`, `n` creates a directory, and `f` saves a favorite.
+- `3`: monitor downloads; `p` pauses/resumes and `x` removes the highlighted job.
+- `4`: temporarily hand the terminal to the TV renamer and return when done.
+- `5`: edit settings, including the default Movies and TV paths. Press `Enter`
+  on either path to choose it through the same drive-aware directory picker.
 
 Drive letters mapped in an interactive Windows login are not always visible to
 OpenSSH or Task Scheduler. If `W:` or `N:` is absent, use its UNC path and save
@@ -67,7 +73,7 @@ all drives visible to that SSH account, performs a temporary-file write check,
 and verifies remote HTTPS authentication and directory parsing. It exits
 nonzero if a required check fails.
 
-After doctor passes, queue one small file in the TUI, disconnect SSH, wait long
+After doctor passes, start one small file in the TUI, disconnect SSH, wait long
 enough for progress, reconnect, and verify the same job in the Downloads tab.
 That final disconnect test proves behavior under the target server's account,
 Task Scheduler policy, VPN, and storage mappings.

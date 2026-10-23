@@ -23,6 +23,10 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Changed
 
+- Reworked v2 navigation around Browser, Selection, Downloads, TV Renamer, and
+  Settings, with arrow-key folder traversal and view-specific controls.
+- Added filename-based Movie/TV inference, configurable default library paths,
+  and one-time per-file destination browsing/reset directly in Selection.
 - Replaced regex-only HTML listing parsing with a root-bound DOM parser.
 - Moved v2 configuration to the per-user operating-system config directory with atomic writes.
 - Upgraded the project to Go 1.26.10 and current Bubble Tea/Bubbles/Lip Gloss releases.

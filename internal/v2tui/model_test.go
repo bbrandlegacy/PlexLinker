@@ -3,11 +3,13 @@ package v2tui
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"plexlinker/internal/browser"
 	"plexlinker/internal/config"
+	media "plexlinker/internal/downloader"
 	"plexlinker/internal/downloads"
 	"plexlinker/internal/storage"
 )
@@ -54,10 +56,14 @@ func (f *fakeDownloads) Remove(context.Context, string, bool) error        { ret
 
 func testModel() (*Model, *fakeDownloads) {
 	downloadService := &fakeDownloads{}
+	cfg := config.NewConfig()
+	cfg.MoviesPath = `W:\movies`
+	cfg.TVShowsPath = `W:\shows`
 	model := New(Services{
 		Remote:  fakeRemote{listing: &browser.DirectoryListing{Items: []browser.DirectoryItem{{Name: "Show.S01E01.mkv", Path: "shows/episode.mkv", Type: browser.TypeFile}}}},
 		Volumes: fakeVolumes{}, Directories: fakeDirectories{}, Downloads: downloadService,
 		Username: "media", Password: "secret",
+		Config: cfg,
 	})
 	return model, downloadService
 }
@@ -70,7 +76,6 @@ func TestSelectDestinationAndSubmit(t *testing.T) {
 	if len(model.selected) != 1 {
 		t.Fatalf("selected = %#v", model.selected)
 	}
-	model.destinationPath = `W:\shows`
 	command := model.submitSelected()
 	if command == nil {
 		t.Fatal("missing submit command")
@@ -101,11 +106,11 @@ func TestDestinationViewFiltersFiles(t *testing.T) {
 func TestCreateDirectoryPromptStartsWithChildPathPrefix(t *testing.T) {
 	t.Parallel()
 	model, _ := testModel()
-	model.tab = TabDestination
+	model.pickerTarget = pickerSelection
 	model.destinationPath = filepath.Join("root", "media")
 
 	key := tea.KeyPressMsg(tea.Key{Text: "n", Code: 'n'})
-	if _, command := model.handleKey(key); command != nil {
+	if _, command := model.handleDestinationPickerKey(key); command != nil {
 		t.Fatal("opening the directory prompt should not start asynchronous work")
 	}
 	want := model.destinationPath + string(filepath.Separator)
@@ -117,11 +122,11 @@ func TestCreateDirectoryPromptStartsWithChildPathPrefix(t *testing.T) {
 func TestGoToPathPromptStartsEmpty(t *testing.T) {
 	t.Parallel()
 	model, _ := testModel()
-	model.tab = TabDestination
+	model.pickerTarget = pickerSelection
 	model.destinationPath = filepath.Join("root", "media")
 
 	key := tea.KeyPressMsg(tea.Key{Text: "g", Code: 'g'})
-	if _, command := model.handleKey(key); command != nil {
+	if _, command := model.handleDestinationPickerKey(key); command != nil {
 		t.Fatal("opening the path prompt should not start asynchronous work")
 	}
 	if got := model.destinationInput.Value(); got != "" {
@@ -138,15 +143,15 @@ func TestChildPathPrefixPreservesExistingSeparators(t *testing.T) {
 	}
 }
 
-func TestQueueRequiresDestination(t *testing.T) {
+func TestDownloadRequiresPerItemDestination(t *testing.T) {
 	t.Parallel()
 	model, _ := testModel()
 	model.selected["https://example.test/file"] = selectedFile{Name: "file"}
 	if command := model.submitSelected(); command != nil {
 		t.Fatal("unexpected command")
 	}
-	if model.tab != TabDestination {
-		t.Fatalf("tab = %v", model.tab)
+	if !strings.Contains(model.status, "Choose a destination") {
+		t.Fatalf("status = %q", model.status)
 	}
 }
 
@@ -161,12 +166,124 @@ func TestSettingsSave(t *testing.T) {
 	model.settingsInputs[0].SetValue("https://media.example.test/files/")
 	model.settingsInputs[1].SetValue("user")
 	model.settingsInputs[2].SetValue("pass")
-	model.settingsInputs[3].SetValue("http://127.0.0.1:6800/jsonrpc")
-	model.settingsInputs[5].SetValue("5")
+	model.settingsInputs[settingMoviesPath].SetValue(`W:\films`)
+	model.settingsInputs[settingTVPath].SetValue(`N:\shows`)
+	model.settingsInputs[settingAriaEndpoint].SetValue("http://127.0.0.1:6800/jsonrpc")
+	model.settingsInputs[settingConcurrency].SetValue("5")
 	message := model.saveSettings()()
 	model.Update(message)
-	if !saved || cfg.MaxConcurrentDownloads != 5 || cfg.BaseURL != "https://media.example.test/files/" {
+	if !saved || cfg.MaxConcurrentDownloads != 5 || cfg.BaseURL != "https://media.example.test/files/" || cfg.MoviesPath != `W:\films` || cfg.TVShowsPath != `N:\shows` {
 		t.Fatalf("saved=%v config=%#v", saved, cfg)
+	}
+}
+
+func TestSelectionInfersMovieAndTVDestinations(t *testing.T) {
+	t.Parallel()
+	model, _ := testModel()
+	tv := model.makeSelectedFile("tv", "Show.S01E01.mkv")
+	movie := model.makeSelectedFile("movie", "Film.2026.mkv")
+	if tv.Category != media.CategoryTVShows || tv.Destination != `W:\shows` {
+		t.Fatalf("TV selection = %#v", tv)
+	}
+	if movie.Category != media.CategoryMovies || movie.Destination != `W:\movies` {
+		t.Fatalf("movie selection = %#v", movie)
+	}
+}
+
+func TestSelectionDestinationOverrideResetAndRemove(t *testing.T) {
+	t.Parallel()
+	model, _ := testModel()
+	file := model.makeSelectedFile("movie", "Film.mkv")
+	file.Destination = `N:\special`
+	model.selected[file.URL] = file
+	model.resetSelectedDestination()
+	if got := model.selected[file.URL].Destination; got != `W:\movies` {
+		t.Fatalf("reset destination = %q", got)
+	}
+	model.selectionColumn = 0
+	model.activateSelection()
+	if len(model.selected) != 0 {
+		t.Fatalf("selection was not removed: %#v", model.selected)
+	}
+}
+
+func TestSelectionPickerCommitsCurrentDirectory(t *testing.T) {
+	t.Parallel()
+	model, _ := testModel()
+	file := model.makeSelectedFile("movie", "Film.mkv")
+	model.selected[file.URL] = file
+	model.selectionColumn = 1
+	if command := model.activateSelection(); command == nil {
+		t.Fatal("expected initial directory load")
+	}
+	model.destinationPath = `N:\one-off`
+	model.finishDestinationPicker()
+	if got := model.selected[file.URL].Destination; got != `N:\one-off` {
+		t.Fatalf("destination = %q", got)
+	}
+}
+
+func TestDownloadUsesPerItemDestinations(t *testing.T) {
+	t.Parallel()
+	model, downloadService := testModel()
+	first := model.makeSelectedFile("movie", "Film.mkv")
+	second := model.makeSelectedFile("tv", "Show.S02E03.mkv")
+	first.Destination = `N:\special-film`
+	model.selected[first.URL] = first
+	model.selected[second.URL] = second
+	message := model.submitSelected()()
+	model.Update(message)
+	got := make(map[string]string)
+	for _, request := range downloadService.submitted {
+		got[request.URL] = request.Destination
+	}
+	if got["movie"] != `N:\special-film` || got["tv"] != `W:\shows` {
+		t.Fatalf("submitted destinations = %#v", got)
+	}
+}
+
+func TestSettingsPathEnterOpensPickerAndCommitUpdatesField(t *testing.T) {
+	t.Parallel()
+	model, _ := testModel()
+	model.tab = TabSettings
+	model.focusSetting(settingMoviesPath)
+	if _, command := model.handleSettingsKey(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})); command == nil {
+		t.Fatal("expected directory load")
+	}
+	if model.pickerTarget != pickerMoviesSetting {
+		t.Fatalf("picker target = %v", model.pickerTarget)
+	}
+	model.destinationPath = `N:\movies`
+	model.finishDestinationPicker()
+	if got := model.settingsInputs[settingMoviesPath].Value(); got != `N:\movies` {
+		t.Fatalf("movie path = %q", got)
+	}
+}
+
+func TestBrowserArrowNavigation(t *testing.T) {
+	t.Parallel()
+	model, _ := testModel()
+	model.remotePath = "Shows/Season 1"
+	model.remoteItems = []browser.DirectoryItem{{Name: "Folder", Path: "Shows/Season 1/Folder", Type: browser.TypeDirectory}}
+	if _, command := model.handleKey(tea.KeyPressMsg(tea.Key{Code: tea.KeyRight})); command == nil {
+		t.Fatal("right arrow did not open directory")
+	}
+	if _, command := model.handleKey(tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft})); command == nil {
+		t.Fatal("left arrow did not navigate to parent")
+	}
+}
+
+func TestHeaderUsesV2NavigationOrder(t *testing.T) {
+	t.Parallel()
+	model, _ := testModel()
+	view := model.View().Content
+	for _, label := range []string{"1 Browser", "2 Selection", "3 Downloads", "4 TV Renamer", "5 Settings"} {
+		if !strings.Contains(view, label) {
+			t.Errorf("view missing %q", label)
+		}
+	}
+	if strings.Contains(view, "Destination]") {
+		t.Fatalf("standalone destination tab remains: %s", view)
 	}
 }
 
