@@ -74,7 +74,11 @@ type actionMsg struct {
 type tickMsg time.Time
 
 func New(services Services) *Model {
-	return &Model{services: services, selected: make(map[string]selectedFile), status: "Connecting…", loading: true, progress: progress.New(progress.WithDefaultBlend(), progress.WithoutPercentage())}
+	status := services.StartupMessage
+	if status == "" {
+		status = "Connecting…"
+	}
+	return &Model{services: services, selected: make(map[string]selectedFile), status: status, loading: true, progress: progress.New(progress.WithDefaultBlend(), progress.WithoutPercentage())}
 }
 
 func (m *Model) Init() tea.Cmd {

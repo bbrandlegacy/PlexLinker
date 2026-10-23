@@ -59,10 +59,11 @@ type DownloadService interface {
 }
 
 type Services struct {
-	Remote      RemoteService
-	Volumes     VolumeService
-	Directories DirectoryService
-	Downloads   DownloadService
-	Username    string
-	Password    string
+	Remote         RemoteService
+	Volumes        VolumeService
+	Directories    DirectoryService
+	Downloads      DownloadService
+	Username       string
+	Password       string
+	StartupMessage string
 }
