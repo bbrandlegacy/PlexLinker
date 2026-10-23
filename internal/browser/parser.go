@@ -1,10 +1,15 @@
 package browser
 
 import (
+	"fmt"
+	"net/url"
+	pathpkg "path"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
+
+	xhtml "golang.org/x/net/html"
 )
 
 type ItemType int
@@ -161,64 +166,33 @@ func ParseHTMLDirectoryWithSort(html, currentPath string, sortByDate bool) (*Dir
 		CurrentPath: currentPath,
 	}
 
-	// Parse table rows to extract links and dates
-	rowRegex := regexp.MustCompile(`(?s)<tr>.*?</tr>`)
-	linkRegex := regexp.MustCompile(`<a\s+[^>]*href=["']([^"']+)["'][^>]*>([^<]+)</a>`)
-	// Common date formats in directory listings: "2024-01-15 14:30", "15-Jan-2024 14:30", etc.
-	dateRegex := regexp.MustCompile(`(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}|\d{2}-\w{3}-\d{4}\s+\d{2}:\d{2}|\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)`)
-
-	rows := rowRegex.FindAllString(html, -1)
-
-	for _, row := range rows {
-		linkMatches := linkRegex.FindStringSubmatch(row)
-		if len(linkMatches) < 3 {
-			continue
-		}
-
-		href := strings.TrimSpace(linkMatches[1])
-		name := strings.TrimSpace(linkMatches[2])
-
-		if href == "" || name == "" || href == "../" || name == ".." || name == "." {
-			continue
-		}
-
-		if strings.HasPrefix(href, "http://") || strings.HasPrefix(href, "https://") ||
-			strings.HasPrefix(href, "mailto:") || strings.HasPrefix(href, "#") {
-			continue
-		}
-
-		var itemType ItemType
-		var itemPath string
-
-		if strings.HasSuffix(href, "/") {
-			itemType = TypeDirectory
-			itemPath = combineURLPath(currentPath, strings.TrimSuffix(href, "/"))
-		} else {
-			itemType = TypeFile
-			itemPath = combineURLPath(currentPath, href)
-		}
-
-		// Parse modification time from row
-		modTime := time.Time{}
-		dateMatches := dateRegex.FindStringSubmatch(row)
-		if len(dateMatches) > 0 {
-			modTime = parseDateTime(dateMatches[0])
-		}
-
-		item := DirectoryItem{
-			Name:         name,
-			Path:         itemPath,
-			Type:         itemType,
-			Selected:     false,
-			ModifiedTime: modTime,
-		}
-
-		if itemType == TypeFile && !item.IsVideoFile() && !item.IsAudioFile() {
-			continue
-		}
-
-		listing.Items = append(listing.Items, item)
+	document, err := htmlpkgParse(strings.NewReader(html))
+	if err != nil {
+		return nil, fmt.Errorf("parse directory HTML: %w", err)
 	}
+	dateRegex := regexp.MustCompile(`(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}(?::\d{2})?|\d{2}-\w{3}-\d{4}\s+\d{2}:\d{2}|\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)`)
+	seen := make(map[string]bool)
+	var walk func(*xhtml.Node)
+	walk = func(node *xhtml.Node) {
+		if node.Type == xhtml.ElementNode && node.Data == "a" {
+			href := attribute(node, "href")
+			name := strings.TrimSpace(nodeText(node))
+			if item, ok := directoryItemFromLink(href, name, currentPath); ok && !seen[item.Path] {
+				containerText := nodeText(nearestContainer(node))
+				if date := dateRegex.FindString(containerText); date != "" {
+					item.ModifiedTime = parseDateTime(date)
+				}
+				if item.Type == TypeDirectory || item.IsVideoFile() || item.IsAudioFile() {
+					seen[item.Path] = true
+					listing.Items = append(listing.Items, item)
+				}
+			}
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	walk(document)
 
 	// Only sort by date if requested (typically only for root directory)
 	if sortByDate {
@@ -251,6 +225,80 @@ func ParseHTMLDirectoryWithSort(html, currentPath string, sortByDate bool) (*Dir
 	return listing, nil
 }
 
+var htmlpkgParse = xhtml.Parse
+
+func directoryItemFromLink(href, name, currentPath string) (DirectoryItem, bool) {
+	href, name = strings.TrimSpace(href), strings.TrimSpace(name)
+	if href == "" || name == "" || href == "../" || name == ".." || name == "." || strings.HasPrefix(href, "#") {
+		return DirectoryItem{}, false
+	}
+	parsed, err := url.Parse(href)
+	if err != nil || parsed.IsAbs() || parsed.Host != "" || strings.HasPrefix(href, "//") {
+		return DirectoryItem{}, false
+	}
+	linkPath := parsed.EscapedPath()
+	decodedPath, err := url.PathUnescape(linkPath)
+	if err != nil {
+		return DirectoryItem{}, false
+	}
+	if strings.HasPrefix(decodedPath, "/") || decodedPath == ".." || strings.HasPrefix(decodedPath, "../") {
+		return DirectoryItem{}, false
+	}
+	for _, segment := range strings.Split(decodedPath, "/") {
+		if segment == ".." {
+			return DirectoryItem{}, false
+		}
+	}
+	directory := strings.HasSuffix(decodedPath, "/") || strings.HasSuffix(name, "/")
+	decodedPath = strings.TrimSuffix(decodedPath, "/")
+	if decodedPath == "" {
+		return DirectoryItem{}, false
+	}
+	itemType := TypeFile
+	if directory {
+		itemType = TypeDirectory
+		name = strings.TrimSuffix(name, "/")
+	}
+	return DirectoryItem{Name: name, Path: combineURLPath(currentPath, decodedPath), Type: itemType}, true
+}
+
+func attribute(node *xhtml.Node, name string) string {
+	for _, attribute := range node.Attr {
+		if strings.EqualFold(attribute.Key, name) {
+			return attribute.Val
+		}
+	}
+	return ""
+}
+
+func nodeText(node *xhtml.Node) string {
+	if node == nil {
+		return ""
+	}
+	var builder strings.Builder
+	var walk func(*xhtml.Node)
+	walk = func(current *xhtml.Node) {
+		if current.Type == xhtml.TextNode {
+			builder.WriteString(current.Data)
+			builder.WriteByte(' ')
+		}
+		for child := current.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	walk(node)
+	return strings.Join(strings.Fields(builder.String()), " ")
+}
+
+func nearestContainer(node *xhtml.Node) *xhtml.Node {
+	for current := node; current != nil; current = current.Parent {
+		if current.Type == xhtml.ElementNode && (current.Data == "tr" || current.Data == "pre" || current.Data == "li") {
+			return current
+		}
+	}
+	return node.Parent
+}
+
 func parseDateTime(dateStr string) time.Time {
 	dateStr = strings.TrimSpace(dateStr)
 
@@ -275,14 +323,7 @@ func parseDateTime(dateStr string) time.Time {
 }
 
 func combineURLPath(basePath, relativePath string) string {
-	if basePath == "" || basePath == "/" {
-		return relativePath
-	}
-
-	if strings.HasSuffix(basePath, "/") {
-		return basePath + relativePath
-	}
-	return basePath + "/" + relativePath
+	return strings.TrimPrefix(pathpkg.Join("/", basePath, relativePath), "/")
 }
 
 func GetParentPath(path string) string {
