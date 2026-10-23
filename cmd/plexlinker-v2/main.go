@@ -25,7 +25,7 @@ func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "version", "--version", "-version":
-			fmt.Printf("PlexLinker v2 %s\n", buildinfo.Version)
+			fmt.Printf("PlexLinker %s\n", buildinfo.Version)
 			return
 		case "rename":
 			if err := runTVRenamer(); err != nil {
@@ -42,7 +42,7 @@ func main() {
 		}
 	}
 	if err := run(); err != nil {
-		fmt.Fprintln(os.Stderr, "PlexLinker v2:", err)
+		fmt.Fprintln(os.Stderr, "PlexLinker:", err)
 		os.Exit(1)
 	}
 }

@@ -105,7 +105,7 @@ jobs:
     - name: Smoke-test version metadata
       run: |
         chmod +x dist/plexlinker-linux-amd64
-        EXPECTED="PlexLinker v2 ${GITHUB_REF_NAME}"
+        EXPECTED="PlexLinker ${GITHUB_REF_NAME}"
         ACTUAL="$(dist/plexlinker-linux-amd64 --version)"
         if [ "${ACTUAL}" != "${EXPECTED}" ]; then
           echo "Version mismatch: expected '${EXPECTED}', got '${ACTUAL}'" >&2

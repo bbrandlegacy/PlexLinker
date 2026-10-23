@@ -1,5 +1,5 @@
 GO ?= go
-VERSION ?= dev
+VERSION ?= v2.0.0
 GOFLAGS_COMMON := -trimpath
 LDFLAGS := -s -w -X plexlinker/internal/buildinfo.Version=$(VERSION)
 

@@ -4,6 +4,8 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-23
+
 ### Added
 
 - One-shot Windows and Linux installers with explicit first-run consent,
@@ -64,4 +66,5 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 - The original tcell application remains available as the v1 legacy rollback artifact.
 
-[Unreleased]: https://github.com/bbrandlegacy/PlexLinker/compare/baseline/v1-2026-10-23...HEAD
+[Unreleased]: https://github.com/bbrandlegacy/PlexLinker/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/bbrandlegacy/PlexLinker/compare/baseline/v1-2026-10-23...v2.0.0

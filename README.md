@@ -5,9 +5,8 @@ HTTPS directory and handing selected files to a persistent aria2 download
 service. It is designed to be operated through SSH: downloads continue after
 the SSH connection and TUI close.
 
-> v2 is under review on `v2-development`. `main` and the
-> `baseline/v1-2026-10-23` tag preserve the original application until the
-> owner completes target-server acceptance and explicitly approves the merge.
+PlexLinker v2.0.0 is the current production release. The original application
+remains preserved by the `baseline/v1-2026-10-23` tag and legacy release binary.
 
 ## What v2 provides
 
@@ -59,6 +58,29 @@ go build -o plexlinker-v1 ./cmd/plexlinker
 ## First run
 
 ### One-shot setup
+
+Download and run the setup package for your host.
+
+Linux AMD64:
+
+```bash
+curl -fLO https://github.com/bbrandlegacy/PlexLinker/releases/latest/download/plexlinker-linux-amd64-setup.tar.gz
+mkdir -p plexlinker-setup
+tar -xzf plexlinker-linux-amd64-setup.tar.gz -C plexlinker-setup
+cd plexlinker-setup
+./setup-linux.sh
+```
+
+Linux ARM64 uses the same commands with `linux-amd64` replaced by
+`linux-arm64`.
+
+Windows PowerShell:
+
+```powershell
+curl.exe -fLO https://github.com/bbrandlegacy/PlexLinker/releases/latest/download/plexlinker-windows-amd64-setup.zip
+Expand-Archive .\plexlinker-windows-amd64-setup.zip -DestinationPath .\plexlinker-setup -Force
+.\plexlinker-setup\setup-windows.cmd
+```
 
 Keep the platform binary and setup files in the same extracted directory.
 
@@ -202,7 +224,8 @@ go vet ./...
 
 The CI matrix tests current and pinned Go on Windows, Linux, and macOS, runs
 golangci-lint, CodeQL, dependency review, govulncheck, cross-builds release
-artifacts, and performs a native Windows aria2 persistence acceptance test.
+artifacts, and performs native Windows and Linux installer, aria2 persistence,
+and real-download acceptance tests.
 
 ## Documentation
 

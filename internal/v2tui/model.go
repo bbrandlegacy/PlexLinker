@@ -963,7 +963,7 @@ var (
 
 func (m *Model) View() tea.View {
 	var b strings.Builder
-	title := "PlexLinker v2"
+	title := "PlexLinker"
 	if m.services.Version != "" {
 		title += " " + m.services.Version
 	}

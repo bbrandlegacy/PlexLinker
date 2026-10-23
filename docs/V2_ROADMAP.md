@@ -1,11 +1,8 @@
 # PlexLinker v2 roadmap
 
-`main` remains the v1 release line. All v2 work is developed and verified on
-`v2-development`; merging to `main` requires the owner's explicit approval.
-
-Status: Windows implementation and target-host acceptance are complete. Linux
-hardening and native persistence acceptance are now in progress. No merge or
-release occurs before owner approval.
+Status: v2.0.0 implementation and native Windows/Linux acceptance are complete.
+The original v1 line remains preserved by `baseline/v1-2026-10-23` and the
+legacy release artifact.
 
 ## Stage 0 — Preserve and stabilize
 
