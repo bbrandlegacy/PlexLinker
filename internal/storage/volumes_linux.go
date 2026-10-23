@@ -20,7 +20,7 @@ func (linuxVolumeProvider) ListVolumes(ctx context.Context) ([]Volume, error) {
 	if err != nil {
 		return []Volume{inspectLinuxVolume("/", "")}, nil
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	seen := map[string]bool{}
 	var volumes []Volume
 	scanner := bufio.NewScanner(file)

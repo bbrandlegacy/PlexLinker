@@ -2,7 +2,7 @@ package ui
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -29,7 +29,7 @@ func NewShowSelectorUI(screen *tcell.Screen) *ShowSelectorUI {
 // LoadShowsFromDirectory scans W:\shows for existing folders
 func (s *ShowSelectorUI) LoadShowsFromDirectory(basePath string) error {
 	// Read directory contents
-	files, err := ioutil.ReadDir(basePath)
+	files, err := os.ReadDir(basePath)
 	if err != nil {
 		return fmt.Errorf("failed to read shows directory: %v", err)
 	}

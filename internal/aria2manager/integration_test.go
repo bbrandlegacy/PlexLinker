@@ -26,7 +26,9 @@ func TestManagedAria2DownloadIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
-	listener.Close()
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
 	secret, err := GenerateSecret()
 	if err != nil {
 		t.Fatal(err)

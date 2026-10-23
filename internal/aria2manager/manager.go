@@ -109,7 +109,9 @@ func (m *Manager) writeConfig() (string, error) {
 	if file, err := os.OpenFile(sessionPath, os.O_CREATE, 0o600); err != nil {
 		return "", fmt.Errorf("create aria2 session: %w", err)
 	} else {
-		file.Close()
+		if err := file.Close(); err != nil {
+			return "", fmt.Errorf("close aria2 session: %w", err)
+		}
 	}
 	parsed, _ := url.Parse(m.config.Endpoint)
 	_, portText, _ := net.SplitHostPort(parsed.Host)

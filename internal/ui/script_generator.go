@@ -162,8 +162,6 @@ func (ui *ScriptGeneratorUI) generateAndRun(executeScripts bool) error {
 	successCount := 0
 	taskSchedulerCount := 0
 	fallbackCount := 0
-	var executions []*downloader.ScriptExecution
-
 	for _, scriptPath := range scriptPaths {
 		if scriptPath == "" {
 			continue
@@ -177,8 +175,6 @@ func (ui *ScriptGeneratorUI) generateAndRun(executeScripts bool) error {
 			// Continue executing other scripts even if one fails
 		} else {
 			successCount++
-			executions = append(executions, execution)
-
 			// Track execution method
 			if execution.ExecutionMethod == "task_scheduler" {
 				taskSchedulerCount++

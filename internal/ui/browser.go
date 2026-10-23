@@ -12,19 +12,17 @@ import (
 )
 
 type BrowserState struct {
-	listing           *browser.DirectoryListing
-	cursorIndex       int
-	scrollOffset      int
-	selectedFiles     map[string]*browser.DirectoryItem
-	client            *client.Client
-	config            *config.Config
-	statusMessage     string
-	isLoading         bool
-	loadingMessage    string
-	cursorHistory     map[string]int // Maps directory path to cursor position
-	lastScriptPID     int            // PID of last launched script
-	lastScriptRunning bool           // Whether last script is still running
-	currentUser       string         // Current username for task naming
+	listing        *browser.DirectoryListing
+	cursorIndex    int
+	scrollOffset   int
+	selectedFiles  map[string]*browser.DirectoryItem
+	client         *client.Client
+	config         *config.Config
+	statusMessage  string
+	isLoading      bool
+	loadingMessage string
+	cursorHistory  map[string]int // Maps directory path to cursor position
+	currentUser    string         // Current username for task naming
 }
 
 type BrowserUI struct {
@@ -188,7 +186,9 @@ func (ui *BrowserUI) handleEnter() bool {
 	item := &ui.state.listing.Items[ui.state.cursorIndex]
 
 	if item.Type == browser.TypeDirectory {
-		ui.LoadDirectory(item.Path)
+		if err := ui.LoadDirectory(item.Path); err != nil {
+			ui.state.statusMessage = fmt.Sprintf("Navigation error: %v", err)
+		}
 	} else {
 		ui.toggleFileSelection(item)
 		ui.moveCursorDown()
@@ -205,7 +205,9 @@ func (ui *BrowserUI) navigateUp() bool {
 		return false
 	}
 
-	ui.LoadDirectory(parentPath)
+	if err := ui.LoadDirectory(parentPath); err != nil {
+		ui.state.statusMessage = fmt.Sprintf("Navigation error: %v", err)
+	}
 	return false
 }
 
@@ -221,10 +223,7 @@ func (ui *BrowserUI) handleEscape() bool {
 }
 
 func (ui *BrowserUI) isAtBaseURL() bool {
-	baseURL := ui.state.config.BaseURL
-	if strings.HasSuffix(baseURL, "/") {
-		baseURL = strings.TrimSuffix(baseURL, "/")
-	}
+	baseURL := strings.TrimSuffix(ui.state.config.BaseURL, "/")
 
 	// If current path is empty (at root), we're at base
 	if ui.state.listing.CurrentPath == "" {
@@ -235,9 +234,7 @@ func (ui *BrowserUI) isAtBaseURL() bool {
 	currentFullPath := ui.state.client.GetFullURL(ui.state.listing.CurrentPath)
 
 	// Remove trailing slash from current path for comparison
-	if strings.HasSuffix(currentFullPath, "/") {
-		currentFullPath = strings.TrimSuffix(currentFullPath, "/")
-	}
+	currentFullPath = strings.TrimSuffix(currentFullPath, "/")
 
 	return currentFullPath == baseURL
 }
@@ -332,11 +329,6 @@ func (ui *BrowserUI) selectAllRecursive() bool {
 			}
 		}
 	}
-}
-
-func (ui *BrowserUI) selectRecursiveHelper(parentPath string) int {
-	// Legacy blocking version - kept for compatibility
-	return ui.selectRecursiveHelperWithProgress(parentPath, nil, nil)
 }
 
 func (ui *BrowserUI) selectRecursiveHelperWithProgress(parentPath string, progressChan chan<- int, cancelChan <-chan bool) int {
@@ -444,108 +436,6 @@ func (ui *BrowserUI) generateScript() bool {
 				// User exited the generator, return to browser
 				ui.state.statusMessage = generatorUI.state.statusMessage
 				return false
-			}
-		case *tcell.EventResize:
-			(*ui.screen).Sync()
-		}
-	}
-}
-
-func (ui *BrowserUI) showMediaTypeModal() *MediaType {
-	modal := NewMediaTypeModalUI(ui.screen)
-
-	for {
-		// Redraw the browser UI first
-		ui.Draw()
-		// Then draw modal on top
-		modal.Draw()
-
-		ev := (*ui.screen).PollEvent()
-		switch ev := ev.(type) {
-		case *tcell.EventKey:
-			if result := modal.HandleKeyEvent(ev); result != nil {
-				return result
-			}
-		case *tcell.EventResize:
-			(*ui.screen).Sync()
-		}
-	}
-}
-
-func (ui *BrowserUI) showShowSelector() *string {
-	selector := NewShowSelectorUI(ui.screen)
-
-	// Attempt to detect show name from selected file paths
-	detectedShows := make(map[string]bool)
-	for url := range ui.state.selectedFiles {
-		if showName := ParseShowNameFromURL(url); showName != "" {
-			detectedShows[showName] = true
-		}
-	}
-
-	// Create show list (could be extended to read from W:\shows if accessible)
-	shows := []string{}
-	for show := range detectedShows {
-		shows = append(shows, show)
-	}
-
-	// If no shows detected, provide a manual input option
-	if len(shows) == 0 {
-		shows = []string{"[Enter show name manually]"}
-	}
-
-	selector.SetManualShows(shows)
-
-	for {
-		// Redraw the browser UI first
-		ui.Draw()
-		// Then draw selector on top
-		selector.Draw()
-
-		ev := (*ui.screen).PollEvent()
-		switch ev := ev.(type) {
-		case *tcell.EventKey:
-			if result := selector.HandleKeyEvent(ev); result != nil {
-				return result
-			}
-		case *tcell.EventResize:
-			(*ui.screen).Sync()
-		}
-	}
-}
-
-func (ui *BrowserUI) showConfirmationModal(message string) bool {
-	modal := NewConfirmModalUI(ui.screen, message)
-
-	for {
-		// Redraw the browser UI first
-		ui.Draw()
-		// Then draw modal on top
-		modal.Draw()
-
-		ev := (*ui.screen).PollEvent()
-		switch ev := ev.(type) {
-		case *tcell.EventKey:
-			if result := modal.HandleKeyEvent(ev); result != nil {
-				return *result
-			}
-		case *tcell.EventResize:
-			(*ui.screen).Sync()
-		}
-	}
-}
-
-func (ui *BrowserUI) showScriptViewer(scriptPath, scriptContent string) {
-	scriptViewer := NewScriptViewerUI(ui.screen, scriptPath, scriptContent)
-
-	for {
-		scriptViewer.Draw()
-
-		ev := (*ui.screen).PollEvent()
-		switch ev := ev.(type) {
-		case *tcell.EventKey:
-			if scriptViewer.HandleKeyEvent(ev) {
-				return // Exit script viewer
 			}
 		case *tcell.EventResize:
 			(*ui.screen).Sync()

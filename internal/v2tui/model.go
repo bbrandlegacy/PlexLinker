@@ -703,7 +703,7 @@ func (m *Model) viewRemote(b *strings.Builder) {
 	m.scrollHint(b, start, end, len(m.remoteItems))
 }
 func (m *Model) viewSelection(b *strings.Builder) {
-	b.WriteString(fmt.Sprintf("Selection: %d files\n", len(m.selected)))
+	fmt.Fprintf(b, "Selection: %d files\n", len(m.selected))
 	files := make([]selectedFile, 0, len(m.selected))
 	for _, f := range m.selected {
 		files = append(files, f)
@@ -752,7 +752,7 @@ func (m *Model) viewDestination(b *strings.Builder) {
 	}
 }
 func (m *Model) viewDownloads(b *strings.Builder) {
-	b.WriteString(fmt.Sprintf("aria2 jobs: %d\n", len(m.jobs)))
+	fmt.Fprintf(b, "aria2 jobs: %d\n", len(m.jobs))
 	start, end := m.visibleRange(m.downloadCursor, len(m.jobs))
 	for i := start; i < end; i++ {
 		j := m.jobs[i]

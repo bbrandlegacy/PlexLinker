@@ -15,7 +15,6 @@ type TVBrowserState struct {
 	selectedFiles map[string]*filesystem.FileItem
 	statusMessage string
 	isLoading     bool
-	filterPattern string
 }
 
 type TVBrowserUI struct {
@@ -141,7 +140,9 @@ func (ui *TVBrowserUI) handleEnter() bool {
 		if err := ui.state.browser.NavigateInto(item.Name); err != nil {
 			ui.state.statusMessage = fmt.Sprintf("Navigation error: %v", err)
 		} else {
-			ui.LoadCurrentDirectory()
+			if err := ui.LoadCurrentDirectory(); err != nil {
+				ui.state.statusMessage = fmt.Sprintf("Navigation error: %v", err)
+			}
 		}
 	} else if item.IsVideo {
 		ui.toggleFileSelection(item)
@@ -158,7 +159,9 @@ func (ui *TVBrowserUI) navigateUp() bool {
 		ui.state.statusMessage = fmt.Sprintf("Cannot navigate up: %v", err)
 		return false
 	}
-	ui.LoadCurrentDirectory()
+	if err := ui.LoadCurrentDirectory(); err != nil {
+		ui.state.statusMessage = fmt.Sprintf("Navigation error: %v", err)
+	}
 	return false
 }
 
@@ -263,7 +266,9 @@ func (ui *TVBrowserUI) showExecuteScreen() bool {
 		case *tcell.EventKey:
 			if executeUI.HandleKeyEvent(ev) {
 				// Refresh the directory listing after rename operations
-				ui.LoadCurrentDirectory()
+				if err := ui.LoadCurrentDirectory(); err != nil {
+					ui.state.statusMessage = fmt.Sprintf("Refresh error: %v", err)
+				}
 				ui.deselectAll()
 				return false
 			}

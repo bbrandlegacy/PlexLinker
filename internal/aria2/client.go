@@ -87,7 +87,7 @@ func (c *Client) call(ctx context.Context, method string, params []any, result a
 	if err != nil {
 		return fmt.Errorf("call aria2: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("aria2 returned HTTP %s", resp.Status)
 	}

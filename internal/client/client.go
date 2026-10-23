@@ -55,7 +55,7 @@ func (c *Client) FetchDirectoryContext(ctx context.Context, path string) (string
 		logger.Get().Client().Printf("FetchDirectory: HTTP request failed: %v", err)
 		return "", fmt.Errorf("failed to fetch directory: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	logger.Get().Client().Printf("FetchDirectory: Received response with status %d", resp.StatusCode)
 
