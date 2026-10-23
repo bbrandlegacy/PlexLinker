@@ -624,7 +624,11 @@ var (
 
 func (m *Model) View() tea.View {
 	var b strings.Builder
-	b.WriteString(accent.Render("PlexLinker v2"))
+	title := "PlexLinker v2"
+	if m.services.Version != "" {
+		title += " " + m.services.Version
+	}
+	b.WriteString(accent.Render(title))
 	b.WriteString("  ")
 	for index, label := range []string{"1 Remote", "2 Selection", "3 Destination", "4 Downloads", "5 Settings"} {
 		style := muted

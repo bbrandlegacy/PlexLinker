@@ -1,5 +1,10 @@
 # PlexLinker
 
+> **v2 development is active on `v2-development`.** The current `main` branch
+> remains the preserved v1 rollback line until Windows acceptance and explicit
+> merge approval. See [the v2 guide](docs/V2_GUIDE.md) and
+> [architecture](docs/V2_ARCHITECTURE.md).
+
 > **Interactive HTML Directory Browser & Batch Download Script Generator**
 
 PlexLinker is a powerful Go CLI tool that browses authenticated web directories, intelligently categorizes media files, and generates aria2c download scripts with automatic Windows Task Scheduler integration for SSH-persistent downloads.

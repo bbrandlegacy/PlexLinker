@@ -35,18 +35,14 @@ jobs:
     - name: Build binaries
       run: |
         mkdir -p dist
-
-        # Build for Windows AMD64
-        GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/plexlinker-windows-amd64.exe ./cmd/plexlinker
-
-        # Build for Linux AMD64
-        GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/plexlinker-linux-amd64 ./cmd/plexlinker
-
-        # Build for macOS AMD64 (Intel)
-        GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/plexlinker-darwin-amd64 ./cmd/plexlinker
-
-        # Build for macOS ARM64 (Apple Silicon)
-        GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/plexlinker-darwin-arm64 ./cmd/plexlinker
+        VERSION="${GITHUB_REF#refs/tags/}"
+        LDFLAGS="-s -w -X plexlinker/internal/buildinfo.Version=${VERSION}"
+        GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="$LDFLAGS" -o dist/plexlinker-windows-amd64.exe ./cmd/plexlinker-v2
+        GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="$LDFLAGS" -o dist/plexlinker-linux-amd64 ./cmd/plexlinker-v2
+        GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="$LDFLAGS" -o dist/plexlinker-linux-arm64 ./cmd/plexlinker-v2
+        GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="$LDFLAGS" -o dist/plexlinker-darwin-amd64 ./cmd/plexlinker-v2
+        GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="$LDFLAGS" -o dist/plexlinker-darwin-arm64 ./cmd/plexlinker-v2
+        GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/plexlinker-v1-legacy-windows-amd64.exe ./cmd/plexlinker
 
     - name: Create checksums
       run: |
@@ -70,8 +66,10 @@ jobs:
         files: |
           dist/plexlinker-windows-amd64.exe
           dist/plexlinker-linux-amd64
+          dist/plexlinker-linux-arm64
           dist/plexlinker-darwin-amd64
           dist/plexlinker-darwin-arm64
+          dist/plexlinker-v1-legacy-windows-amd64.exe
           dist/checksums.txt
         body_path: release_notes.md
         draft: false

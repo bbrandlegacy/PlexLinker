@@ -17,6 +17,13 @@ func (f fakeRemote) List(context.Context, string) (*browser.DirectoryListing, er
 }
 func (fakeRemote) FullURL(path string) string { return "https://example.test/" + path }
 
+type treeRemote map[string]*browser.DirectoryListing
+
+func (tree treeRemote) List(_ context.Context, path string) (*browser.DirectoryListing, error) {
+	return tree[path], nil
+}
+func (treeRemote) FullURL(path string) string { return "https://example.test/" + path }
+
 type fakeVolumes struct{}
 
 func (fakeVolumes) ListVolumes(context.Context) ([]storage.Volume, error) {
@@ -118,5 +125,19 @@ func TestSettingsSave(t *testing.T) {
 	model.Update(message)
 	if !saved || cfg.MaxConcurrentDownloads != 5 || cfg.BaseURL != "https://media.example.test/files/" {
 		t.Fatalf("saved=%v config=%#v", saved, cfg)
+	}
+}
+
+func TestRecursiveSelection(t *testing.T) {
+	t.Parallel()
+	model, _ := testModel()
+	model.services.Remote = treeRemote{
+		"":      {CurrentPath: "", Items: []browser.DirectoryItem{{Name: "Shows", Path: "Shows", Type: browser.TypeDirectory}, {Name: "movie.mkv", Path: "movie.mkv", Type: browser.TypeFile}}},
+		"Shows": {CurrentPath: "Shows", Items: []browser.DirectoryItem{{Name: "episode.mkv", Path: "Shows/episode.mkv", Type: browser.TypeFile}}},
+	}
+	message := model.selectRecursive("")()
+	model.Update(message)
+	if len(model.selected) != 2 {
+		t.Fatalf("selected = %#v", model.selected)
 	}
 }

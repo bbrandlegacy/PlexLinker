@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"plexlinker/internal/aria2"
 	"plexlinker/internal/aria2manager"
+	"plexlinker/internal/buildinfo"
 	"plexlinker/internal/client"
 	"plexlinker/internal/config"
 	"plexlinker/internal/downloads"
@@ -62,6 +63,7 @@ func run() error {
 		StartupMessage: startupMessage,
 		Config:         cfg,
 		SaveConfig:     func(updated *config.Config) error { return updated.SaveV2() },
+		Version:        buildinfo.Version,
 	})
 	program := tea.NewProgram(model)
 	_, err = program.Run()

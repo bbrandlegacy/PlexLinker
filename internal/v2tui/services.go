@@ -69,4 +69,5 @@ type Services struct {
 	StartupMessage string
 	Config         *config.Config
 	SaveConfig     func(*config.Config) error
+	Version        string
 }
