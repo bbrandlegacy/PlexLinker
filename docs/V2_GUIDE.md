@@ -33,7 +33,7 @@ current user's config directory.
 
 - `1`: browse the remote HTTPS directory. `Right`/`Enter` opens a folder and
   `Left` returns to its parent; `Enter`/`Space` toggles a file.
-- `a`: select all media files in the current directory.
+- `a`: toggle all media files in the current directory on or off.
 - `s`: recursively scan and select media below the current directory.
 - `2`: review selections. PlexLinker infers TV from season/episode markers such
   as `S01`, `S01E01`, `Season 1`, and `1x01`; other names default to Movies.
@@ -41,6 +41,9 @@ current user's config directory.
   destination. `Enter` on the filename removes it; `Enter` on the destination
   opens its one-time directory picker. `r` resets only that row to its inferred
   default, `c` clears all rows, and `d` starts the selected downloads.
+- If Windows incorrectly rejects the temporary write preflight, `Shift+D`
+  submits the selected downloads to aria2 anyway; aria2 then reports the real
+  transfer result in Downloads.
 - In a directory picker, `Right`/`Enter` opens a drive or folder, `Left` moves
   to its parent, and `Esc` accepts the current folder. `g` types a path such as
   `\\server\share\folder`, `n` creates a directory, and `f` saves a favorite.

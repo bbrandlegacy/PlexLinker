@@ -87,7 +87,7 @@ on loopback and uses a generated secret stored in the per-user config.
 - `Up`/`Down` selects a row.
 - `Right` or `Enter` opens a folder; `Left` returns to its parent.
 - `Enter` or `Space` toggles a file selection.
-- `a` selects all files in the current directory.
+- `a` toggles all files in the current directory: select all, then deselect all.
 - `s` recursively selects files below the current directory.
 
 ### Selection
@@ -101,6 +101,7 @@ Each row is presented as `filename → destination`.
 - `r` restores the highlighted file's inferred default destination.
 - `c` clears all selections.
 - `d` validates every destination and starts the downloads.
+- `Shift+D` bypasses the write preflight and lets aria2 attempt the download.
 
 Names containing markers such as `S01`, `S01E01`, `Season 1`, `1x01`, or
 `Episode 1` default to TV. Other filenames default to Movies.

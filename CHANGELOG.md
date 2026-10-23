@@ -23,6 +23,8 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Changed
 
+- Made `a` toggle all files in the current browser directory and added an
+  explicit `Shift+D` override for destination write-preflight failures.
 - Reworked v2 navigation around Browser, Selection, Downloads, TV Renamer, and
   Settings, with arrow-key folder traversal and view-specific controls.
 - Added filename-based Movie/TV inference, configurable default library paths,

@@ -2,6 +2,7 @@ package v2tui
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -39,6 +40,12 @@ type fakeDirectories struct{}
 func (fakeDirectories) List(context.Context, string) ([]storage.Entry, error) { return nil, nil }
 func (fakeDirectories) CreateDirectory(string) error                          { return nil }
 func (fakeDirectories) IsWritable(string) error                               { return nil }
+
+type unwritableDirectories struct{ fakeDirectories }
+
+func (unwritableDirectories) IsWritable(path string) error {
+	return errors.New(`destination "` + path + `" is not writable: media is write protected`)
+}
 
 type fakeDownloads struct {
 	submitted []downloads.Request
@@ -192,6 +199,43 @@ func TestSelectionInfersMovieAndTVDestinations(t *testing.T) {
 	}
 	if movie.Category != media.CategoryMovies || movie.Destination != `W:\movies` {
 		t.Fatalf("movie selection = %#v", movie)
+	}
+}
+
+func TestSelectAllTogglesOnlyCurrentDirectory(t *testing.T) {
+	t.Parallel()
+	model, _ := testModel()
+	model.tab = TabRemote
+	model.remoteItems = []browser.DirectoryItem{
+		{Name: "One.mkv", Path: "current/One.mkv", Type: browser.TypeFile},
+		{Name: "Two.mp4", Path: "current/Two.mp4", Type: browser.TypeFile},
+		{Name: "Folder", Path: "current/Folder", Type: browser.TypeDirectory},
+	}
+	model.selected["https://example.test/elsewhere.mkv"] = model.makeSelectedFile("https://example.test/elsewhere.mkv", "Elsewhere.mkv")
+	model.selectAll()
+	if len(model.selected) != 3 {
+		t.Fatalf("selected after first toggle = %#v", model.selected)
+	}
+	model.selectAll()
+	if len(model.selected) != 1 || model.selected["https://example.test/elsewhere.mkv"].Name != "Elsewhere.mkv" {
+		t.Fatalf("selected after second toggle = %#v", model.selected)
+	}
+}
+
+func TestForceDownloadBypassesWritePreflight(t *testing.T) {
+	t.Parallel()
+	model, downloadService := testModel()
+	model.services.Directories = unwritableDirectories{}
+	file := model.makeSelectedFile("https://example.test/Movie.mkv", "Movie.mkv")
+	model.selected[file.URL] = file
+
+	model.Update(model.submitSelected()())
+	if len(downloadService.submitted) != 0 || !strings.Contains(model.status, "Shift+D") {
+		t.Fatalf("preflight status=%q submitted=%#v", model.status, downloadService.submitted)
+	}
+	model.Update(model.submitSelectedWithoutPreflight()())
+	if len(downloadService.submitted) != 1 {
+		t.Fatalf("forced submission = %#v", downloadService.submitted)
 	}
 }
 

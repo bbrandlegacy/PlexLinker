@@ -96,8 +96,9 @@ type jobsLoadedMsg struct {
 	err  error
 }
 type submittedMsg struct {
-	count int
-	err   error
+	count     int
+	err       error
+	preflight bool
 }
 type actionMsg struct {
 	message string
@@ -201,7 +202,11 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case submittedMsg:
 		m.loading = false
 		if msg.err != nil {
-			m.status = fmt.Sprintf("Submitted %d with errors: %v", msg.count, msg.err)
+			if msg.preflight {
+				m.status = "Download not started: " + msg.err.Error() + " • Shift+D to submit anyway"
+			} else {
+				m.status = fmt.Sprintf("Submitted %d with errors: %v", msg.count, msg.err)
+			}
 		} else {
 			m.status = fmt.Sprintf("Started %d downloads", msg.count)
 			m.selected = make(map[string]selectedFile)
@@ -288,6 +293,10 @@ func (m *Model) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "d":
 		if m.tab == TabSelection {
 			return m, m.submitSelected()
+		}
+	case "D":
+		if m.tab == TabSelection {
+			return m, m.submitSelectedWithoutPreflight()
 		}
 	case "r":
 		if m.tab == TabRemote {
@@ -606,13 +615,33 @@ func (m *Model) selectAll() {
 	if m.tab != TabRemote {
 		return
 	}
+	files := make([]browser.DirectoryItem, 0, len(m.remoteItems))
+	allSelected := true
 	for _, item := range m.remoteItems {
 		if item.Type == browser.TypeFile {
-			url := m.services.Remote.FullURL(item.Path)
+			files = append(files, item)
+			if _, selected := m.selected[m.services.Remote.FullURL(item.Path)]; !selected {
+				allSelected = false
+			}
+		}
+	}
+	if len(files) == 0 {
+		m.status = "No files in the current directory"
+		return
+	}
+	for _, item := range files {
+		url := m.services.Remote.FullURL(item.Path)
+		if allSelected {
+			delete(m.selected, url)
+		} else {
 			m.selected[url] = m.makeSelectedFile(url, item.Name)
 		}
 	}
-	m.status = fmt.Sprintf("Selected %d files", len(m.selected))
+	if allSelected {
+		m.status = fmt.Sprintf("Deselected %d files in the current directory", len(files))
+	} else {
+		m.status = fmt.Sprintf("Selected %d files in the current directory", len(files))
+	}
 }
 
 func (m *Model) selectRecursive(root string) tea.Cmd {
@@ -656,6 +685,14 @@ func (m *Model) selectRecursive(root string) tea.Cmd {
 }
 
 func (m *Model) submitSelected() tea.Cmd {
+	return m.submitSelectedWithPreflight(true)
+}
+
+func (m *Model) submitSelectedWithoutPreflight() tea.Cmd {
+	return m.submitSelectedWithPreflight(false)
+}
+
+func (m *Model) submitSelectedWithPreflight(checkWritable bool) tea.Cmd {
 	if len(m.selected) == 0 {
 		m.status = "Select files first"
 		return nil
@@ -671,13 +708,15 @@ func (m *Model) submitSelected() tea.Cmd {
 	sort.Slice(requests, func(i, j int) bool { return requests[i].URL < requests[j].URL })
 	m.loading = true
 	return func() tea.Msg {
-		checked := make(map[string]bool)
-		for _, request := range requests {
-			if !checked[request.Destination] {
-				if err := m.services.Directories.IsWritable(request.Destination); err != nil {
-					return submittedMsg{err: err}
+		if checkWritable {
+			checked := make(map[string]bool)
+			for _, request := range requests {
+				if !checked[request.Destination] {
+					if err := m.services.Directories.IsWritable(request.Destination); err != nil {
+						return submittedMsg{err: err, preflight: true}
+					}
+					checked[request.Destination] = true
 				}
-				checked[request.Destination] = true
 			}
 		}
 		results, err := m.services.Downloads.Submit(context.Background(), requests)
@@ -948,9 +987,9 @@ func (m *Model) View() tea.View {
 	} else if m.tab == TabSettings {
 		b.WriteString(muted.Render("Tab/↑/↓ fields • Ctrl+S save • Esc return"))
 	} else if m.tab == TabSelection {
-		b.WriteString(muted.Render("↑/↓ item • ←/→ name/destination • Enter remove/browse • r reset • d Download • c clear"))
+		b.WriteString(muted.Render("↑/↓ item • ←/→ name/destination • Enter remove/browse • r reset • d Download • Shift+D force • c clear"))
 	} else if m.tab == TabRemote {
-		b.WriteString(muted.Render("↑/↓ navigate • →/Enter open • ← parent • Enter file select • a current • s recursive • q quit"))
+		b.WriteString(muted.Render("↑/↓ navigate • →/Enter open • ← parent • Enter file select • a toggle current • s recursive • q quit"))
 	} else if m.tab == TabDownloads {
 		b.WriteString(muted.Render("↑/↓ navigate • p/Enter pause/resume • t retry failed • x remove • r refresh • q quit"))
 	} else {
