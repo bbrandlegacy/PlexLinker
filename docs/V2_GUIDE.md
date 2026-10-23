@@ -13,6 +13,9 @@ or losing SSH does not stop queued work.
 The release binary is self-contained apart from aria2. Go 1.26 is only needed
 when building from source.
 
+Confirm an installed binary and its embedded release version with
+`plexlinker.exe --version`.
+
 ## First run
 
 1. Put `aria2c.exe` and `plexlinker-windows-amd64.exe` on `PATH`.
