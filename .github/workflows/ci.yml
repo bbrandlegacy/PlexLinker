@@ -72,10 +72,77 @@ jobs:
         name: codecov-${{ matrix.os }}-${{ matrix.go-version }}
       if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.26.x'
 
+  windows-acceptance:
+    name: Windows aria2 persistence acceptance
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7
+
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+        cache: true
+
+    - name: Install aria2
+      run: choco install aria2 --yes --no-progress
+
+    - name: Build acceptance binaries
+      run: |
+        go build -trimpath -o plexlinker-v2.exe ./cmd/plexlinker-v2
+        go build -trimpath -o plexlinker-demo-server.exe ./cmd/plexlinker-demo-server
+
+    - name: Exercise RPC, Task Scheduler, storage, and remote browsing
+      shell: pwsh
+      run: |
+        $demo = Start-Process -FilePath '.\plexlinker-demo-server.exe' `
+          -ArgumentList '-listen', '127.0.0.1:18787' -PassThru `
+          -RedirectStandardOutput "$env:RUNNER_TEMP\demo.stdout.log" `
+          -RedirectStandardError "$env:RUNNER_TEMP\demo.stderr.log"
+        try {
+          $ready = $false
+          foreach ($attempt in 1..20) {
+            try {
+              $connection = [Net.Sockets.TcpClient]::new('127.0.0.1', 18787)
+              $connection.Dispose()
+              $ready = $true
+              break
+            } catch {
+              Start-Sleep -Milliseconds 250
+            }
+          }
+          if (-not $ready) {
+            throw 'Demo server did not become ready.'
+          }
+
+          $env:PLEXLINKER_CONFIG = "$env:RUNNER_TEMP\plexlinker-doctor.json"
+          $env:PLEX_BASE_URL = 'http://127.0.0.1:18787/'
+          $env:PLEX_USERNAME = 'plex'
+          $env:PLEX_PASSWORD = 'demo'
+          $env:PLEXLINKER_ARIA2_ENDPOINT = 'http://127.0.0.1:16899/jsonrpc'
+          $env:PLEXLINKER_ARIA2_SECRET = 'ci-doctor-secret'
+
+          & .\plexlinker-v2.exe doctor --destination "$env:RUNNER_TEMP" --timeout 30s
+          if ($LASTEXITCODE -ne 0) {
+            throw "PlexLinker doctor failed with exit code $LASTEXITCODE."
+          }
+          schtasks /query /tn PlexLinker_aria2 /fo LIST
+          if ($LASTEXITCODE -ne 0) {
+            throw 'PlexLinker_aria2 was not registered in Task Scheduler.'
+          }
+        } finally {
+          Stop-Process -Id $demo.Id -Force -ErrorAction SilentlyContinue
+          schtasks /end /tn PlexLinker_aria2 2>$null
+          schtasks /delete /tn PlexLinker_aria2 /f 2>$null
+          Get-Process aria2c -ErrorAction SilentlyContinue | Stop-Process -Force
+        }
+
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, windows-acceptance]
 
     steps:
     - name: Checkout code
