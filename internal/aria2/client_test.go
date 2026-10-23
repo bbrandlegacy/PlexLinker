@@ -70,3 +70,18 @@ func TestTellActiveDecodesJobs(t *testing.T) {
 		t.Fatalf("jobs = %#v", jobs)
 	}
 }
+
+func TestRemoveDownloadResultUsesStoppedResultMethod(t *testing.T) {
+	t.Parallel()
+	client := testClient(t, `{"jsonrpc":"2.0","id":"1","result":"OK"}`, func(request rpcRequest) {
+		if request.Method != "aria2.removeDownloadResult" {
+			t.Fatalf("method = %q", request.Method)
+		}
+		if len(request.Params) != 2 || request.Params[1] != "failed-gid" {
+			t.Fatalf("params = %#v", request.Params)
+		}
+	})
+	if err := client.RemoveDownloadResult(context.Background(), "failed-gid"); err != nil {
+		t.Fatal(err)
+	}
+}

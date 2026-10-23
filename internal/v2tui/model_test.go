@@ -43,6 +43,7 @@ func (fakeDirectories) IsWritable(string) error                               { 
 type fakeDownloads struct {
 	submitted []downloads.Request
 	jobs      []downloads.Job
+	results   []string
 }
 
 func (f *fakeDownloads) Submit(_ context.Context, requests []downloads.Request) ([]downloads.Submitted, error) {
@@ -53,6 +54,10 @@ func (f *fakeDownloads) Snapshot(context.Context) ([]downloads.Job, error) { ret
 func (f *fakeDownloads) Pause(context.Context, string) error               { return nil }
 func (f *fakeDownloads) Resume(context.Context, string) error              { return nil }
 func (f *fakeDownloads) Remove(context.Context, string, bool) error        { return nil }
+func (f *fakeDownloads) RemoveResult(_ context.Context, gid string) error {
+	f.results = append(f.results, gid)
+	return nil
+}
 
 func testModel() (*Model, *fakeDownloads) {
 	downloadService := &fakeDownloads{}
@@ -284,6 +289,46 @@ func TestHeaderUsesV2NavigationOrder(t *testing.T) {
 	}
 	if strings.Contains(view, "Destination]") {
 		t.Fatalf("standalone destination tab remains: %s", view)
+	}
+}
+
+func TestRetryFailedDownloadReusesRetainedRequest(t *testing.T) {
+	t.Parallel()
+	model, downloadService := testModel()
+	model.tab = TabDownloads
+	model.jobs = []downloads.Job{{
+		GID: "failed-gid", Name: "Movie.mkv", SourceURL: "https://example.test/Movie.mkv",
+		Destination: `N:\movies`, State: downloads.StateError,
+	}}
+	command := model.retryJob()
+	if command == nil {
+		t.Fatal("missing retry command")
+	}
+	model.Update(command())
+	if len(downloadService.results) != 1 || downloadService.results[0] != "failed-gid" {
+		t.Fatalf("removed results = %#v", downloadService.results)
+	}
+	if len(downloadService.submitted) != 1 {
+		t.Fatalf("submitted = %#v", downloadService.submitted)
+	}
+	request := downloadService.submitted[0]
+	if request.URL != "https://example.test/Movie.mkv" || request.Destination != `N:\movies` || request.Filename != "Movie.mkv" {
+		t.Fatalf("retry request = %#v", request)
+	}
+}
+
+func TestRemoveStoppedDownloadUsesResultRemoval(t *testing.T) {
+	t.Parallel()
+	model, downloadService := testModel()
+	model.tab = TabDownloads
+	model.jobs = []downloads.Job{{GID: "complete-gid", Name: "Movie.mkv", State: downloads.StateComplete}}
+	command := model.removeJob()
+	if command == nil {
+		t.Fatal("missing remove command")
+	}
+	model.Update(command())
+	if len(downloadService.results) != 1 || downloadService.results[0] != "complete-gid" {
+		t.Fatalf("removed results = %#v", downloadService.results)
 	}
 }
 

@@ -58,6 +58,7 @@ type DownloadService interface {
 	Pause(context.Context, string) error
 	Resume(context.Context, string) error
 	Remove(context.Context, string, bool) error
+	RemoveResult(context.Context, string) error
 }
 
 type Services struct {

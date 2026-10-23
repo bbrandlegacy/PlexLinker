@@ -117,6 +117,7 @@ Names containing markers such as `S01`, `S01E01`, `Season 1`, `1x01`, or
 ### Downloads
 
 - `p` or `Enter` pauses/resumes the selected job.
+- `t` retries a failed job using its retained source URL and destination.
 - `x` removes the selected job and its aria2 result.
 - `r` refreshes the list.
 

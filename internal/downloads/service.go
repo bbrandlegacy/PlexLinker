@@ -43,6 +43,7 @@ type Submitted struct {
 type Job struct {
 	GID            string
 	Name           string
+	SourceURL      string
 	Destination    string
 	State          State
 	TotalBytes     uint64
@@ -67,6 +68,7 @@ type Backend interface {
 	Pause(context.Context, string) error
 	Unpause(context.Context, string) error
 	Remove(context.Context, string, bool) error
+	RemoveDownloadResult(context.Context, string) error
 	SaveSession(context.Context) error
 }
 
@@ -157,6 +159,9 @@ func (s *Service) Resume(ctx context.Context, gid string) error { return s.backe
 func (s *Service) Remove(ctx context.Context, gid string, force bool) error {
 	return s.backend.Remove(ctx, gid, force)
 }
+func (s *Service) RemoveResult(ctx context.Context, gid string) error {
+	return s.backend.RemoveDownloadResult(ctx, gid)
+}
 
 func convertJob(raw aria2.Job) Job {
 	job := Job{GID: raw.GID, Destination: raw.Dir, State: State(raw.Status), ErrorCode: raw.ErrorCode, ErrorMessage: raw.ErrorMessage}
@@ -165,6 +170,12 @@ func convertJob(raw aria2.Job) Job {
 	job.BytesPerSecond, _ = strconv.ParseUint(raw.DownloadSpeed, 10, 64)
 	if len(raw.Files) > 0 {
 		job.Name = filepath.Base(raw.Files[0].Path)
+		for _, uri := range raw.Files[0].URIs {
+			if uri.URI != "" {
+				job.SourceURL = uri.URI
+				break
+			}
+		}
 	}
 	return job
 }

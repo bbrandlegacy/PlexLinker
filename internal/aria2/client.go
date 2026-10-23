@@ -180,6 +180,10 @@ func (c *Client) Remove(ctx context.Context, gid string, force bool) error {
 	return c.call(ctx, method, []any{gid}, nil)
 }
 
+func (c *Client) RemoveDownloadResult(ctx context.Context, gid string) error {
+	return c.call(ctx, "aria2.removeDownloadResult", []any{gid}, nil)
+}
+
 type GlobalStat struct {
 	DownloadSpeed string `json:"downloadSpeed"`
 	UploadSpeed   string `json:"uploadSpeed"`

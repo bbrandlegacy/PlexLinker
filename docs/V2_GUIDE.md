@@ -44,7 +44,8 @@ current user's config directory.
 - In a directory picker, `Right`/`Enter` opens a drive or folder, `Left` moves
   to its parent, and `Esc` accepts the current folder. `g` types a path such as
   `\\server\share\folder`, `n` creates a directory, and `f` saves a favorite.
-- `3`: monitor downloads; `p` pauses/resumes and `x` removes the highlighted job.
+- `3`: monitor downloads; `p` pauses/resumes, `t` retries a failed job, and `x`
+  removes the highlighted active job or stopped result.
 - `4`: temporarily hand the terminal to the TV renamer and return when done.
 - `5`: edit settings, including the default Movies and TV paths. Press `Enter`
   on either path to choose it through the same drive-aware directory picker.

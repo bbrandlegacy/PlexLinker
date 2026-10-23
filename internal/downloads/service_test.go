@@ -13,6 +13,7 @@ type fakeBackend struct {
 	saveCount                int
 	active, waiting, stopped []aria2.Job
 	addErr                   error
+	removedResult            string
 }
 
 func (f *fakeBackend) AddURI(_ context.Context, _ string, options aria2.AddOptions) (string, error) {
@@ -29,7 +30,11 @@ func (f *fakeBackend) TellStopped(context.Context, int, int) ([]aria2.Job, error
 func (f *fakeBackend) Pause(context.Context, string) error        { return nil }
 func (f *fakeBackend) Unpause(context.Context, string) error      { return nil }
 func (f *fakeBackend) Remove(context.Context, string, bool) error { return nil }
-func (f *fakeBackend) SaveSession(context.Context) error          { f.saveCount++; return nil }
+func (f *fakeBackend) RemoveDownloadResult(_ context.Context, gid string) error {
+	f.removedResult = gid
+	return nil
+}
+func (f *fakeBackend) SaveSession(context.Context) error { f.saveCount++; return nil }
 
 func TestSubmitMapsCredentialsWithoutScripts(t *testing.T) {
 	t.Parallel()
@@ -63,12 +68,23 @@ func TestSubmitReportsPartialFailure(t *testing.T) {
 
 func TestSnapshotConvertsAndSorts(t *testing.T) {
 	t.Parallel()
-	backend := &fakeBackend{active: []aria2.Job{{GID: "a", Status: "active", TotalLength: "100", CompletedLength: "25", DownloadSpeed: "10", Files: []aria2.File{{Path: "/media/a.mkv"}}}}, stopped: []aria2.Job{{GID: "b", Status: "complete", Files: []aria2.File{{Path: "/media/b.mkv"}}}}}
+	backend := &fakeBackend{active: []aria2.Job{{GID: "a", Status: "active", TotalLength: "100", CompletedLength: "25", DownloadSpeed: "10", Files: []aria2.File{{Path: "/media/a.mkv", URIs: []aria2.URIRef{{URI: "https://example.test/a.mkv", Status: "used"}}}}}}, stopped: []aria2.Job{{GID: "b", Status: "complete", Files: []aria2.File{{Path: "/media/b.mkv"}}}}}
 	jobs, err := NewService(backend).Snapshot(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(jobs) != 2 || jobs[0].GID != "a" || jobs[0].Progress() != .25 || jobs[1].State != StateComplete {
+	if len(jobs) != 2 || jobs[0].GID != "a" || jobs[0].Progress() != .25 || jobs[0].SourceURL != "https://example.test/a.mkv" || jobs[1].State != StateComplete {
 		t.Fatalf("jobs = %#v", jobs)
+	}
+}
+
+func TestRemoveStoppedResult(t *testing.T) {
+	t.Parallel()
+	backend := &fakeBackend{}
+	if err := NewService(backend).RemoveResult(context.Background(), "stopped-gid"); err != nil {
+		t.Fatal(err)
+	}
+	if backend.removedResult != "stopped-gid" {
+		t.Fatalf("removed result = %q", backend.removedResult)
 	}
 }

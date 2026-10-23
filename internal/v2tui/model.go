@@ -303,6 +303,8 @@ func (m *Model) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, m.togglePause()
 	case "x":
 		return m, m.removeJob()
+	case "t":
+		return m, m.retryJob()
 	}
 	return m, nil
 }
@@ -706,7 +708,45 @@ func (m *Model) removeJob() tea.Cmd {
 	}
 	job := m.jobs[m.downloadCursor]
 	return func() tea.Msg {
-		return actionMsg{message: "Removed " + job.Name, err: m.services.Downloads.Remove(context.Background(), job.GID, true)}
+		var err error
+		if job.State == downloads.StateComplete || job.State == downloads.StateError || job.State == downloads.StateRemoved {
+			err = m.services.Downloads.RemoveResult(context.Background(), job.GID)
+		} else {
+			err = m.services.Downloads.Remove(context.Background(), job.GID, true)
+		}
+		return actionMsg{message: "Removed " + job.Name, err: err}
+	}
+}
+
+func (m *Model) retryJob() tea.Cmd {
+	if m.tab != TabDownloads || len(m.jobs) == 0 {
+		return nil
+	}
+	job := m.jobs[m.downloadCursor]
+	if job.State != downloads.StateError {
+		m.status = "Only failed downloads can be retried"
+		return nil
+	}
+	if job.SourceURL == "" || job.Destination == "" {
+		m.status = "Cannot retry: aria2 did not retain the source URL or destination"
+		return nil
+	}
+	return func() tea.Msg {
+		ctx := context.Background()
+		if err := m.services.Downloads.RemoveResult(ctx, job.GID); err != nil {
+			return actionMsg{err: fmt.Errorf("remove failed result before retry: %w", err)}
+		}
+		results, err := m.services.Downloads.Submit(ctx, []downloads.Request{{
+			URL: job.SourceURL, Filename: job.Name, Destination: job.Destination,
+			Username: m.services.Username, Password: m.services.Password,
+		}})
+		if err != nil {
+			return actionMsg{err: fmt.Errorf("retry %s: %w", job.Name, err)}
+		}
+		if len(results) != 1 || results[0].GID == "" {
+			return actionMsg{err: fmt.Errorf("retry %s returned no aria2 job", job.Name)}
+		}
+		return actionMsg{message: "Retried " + job.Name}
 	}
 }
 
@@ -912,7 +952,7 @@ func (m *Model) View() tea.View {
 	} else if m.tab == TabRemote {
 		b.WriteString(muted.Render("↑/↓ navigate • →/Enter open • ← parent • Enter file select • a current • s recursive • q quit"))
 	} else if m.tab == TabDownloads {
-		b.WriteString(muted.Render("↑/↓ navigate • p/Enter pause/resume • x remove • r refresh • q quit"))
+		b.WriteString(muted.Render("↑/↓ navigate • p/Enter pause/resume • t retry failed • x remove • r refresh • q quit"))
 	} else {
 		b.WriteString(muted.Render("Tab switch • q quit"))
 	}
