@@ -44,6 +44,31 @@ Drive letters mapped in an interactive Windows login are not always visible to
 OpenSSH or Task Scheduler. If `W:` or `N:` is absent, use its UNC path and save
 that path as a favorite.
 
+## Windows acceptance check
+
+Run the built-in doctor from the same SSH account that will operate PlexLinker:
+
+```powershell
+plexlinker.exe doctor --destination 'W:\Movies'
+```
+
+Use a UNC destination when a mapped drive is intentionally unavailable:
+
+```powershell
+plexlinker.exe doctor --destination '\\server\share\Movies'
+```
+
+The command validates the saved settings without printing credentials, starts
+or reconnects to aria2, confirms the `PlexLinker_aria2` scheduled task, lists
+all drives visible to that SSH account, performs a temporary-file write check,
+and verifies remote HTTPS authentication and directory parsing. It exits
+nonzero if a required check fails.
+
+After doctor passes, queue one small file in the TUI, disconnect SSH, wait long
+enough for progress, reconnect, and verify the same job in the Downloads tab.
+That final disconnect test proves behavior under the target server's account,
+Task Scheduler policy, VPN, and storage mappings.
+
 ## Optional persistent TUI
 
 aria2 persistence does not require a terminal multiplexer. A multiplexer is

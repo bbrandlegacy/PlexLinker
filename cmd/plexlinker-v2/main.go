@@ -21,12 +21,21 @@ import (
 )
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "rename" {
-		if err := runTVRenamer(); err != nil {
-			fmt.Fprintln(os.Stderr, "PlexLinker TV renamer:", err)
-			os.Exit(1)
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "rename":
+			if err := runTVRenamer(); err != nil {
+				fmt.Fprintln(os.Stderr, "PlexLinker TV renamer:", err)
+				os.Exit(1)
+			}
+			return
+		case "doctor":
+			if err := runDoctor(os.Args[2:]); err != nil {
+				fmt.Fprintln(os.Stderr, "PlexLinker doctor:", err)
+				os.Exit(1)
+			}
+			return
 		}
-		return
 	}
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "PlexLinker v2:", err)

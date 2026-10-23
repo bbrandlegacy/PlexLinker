@@ -15,6 +15,8 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - TV renamer handoff from the v2 interface, preserving the existing preview,
   execute, and undo workflow.
 - Cross-platform v2 builds, CodeQL, dependency review, Dependabot, and vulnerability scanning.
+- Built-in `doctor` command for Windows SSH, Task Scheduler, drive/UNC,
+  destination write, aria2 RPC, and remote directory acceptance checks.
 
 ### Changed
 
