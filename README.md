@@ -32,6 +32,23 @@ remains preserved by the `baseline/v1-2026-10-23` tag and legacy release binary.
 
 Linux and macOS are supported. Windows is the primary production target.
 
+## Download
+
+Choose your platform and download the latest release directly in your browser:
+
+| Platform | Recommended download |
+|---|---|
+| Windows 10/11 or Server (64-bit) | [Download Windows setup package](https://github.com/bbrandlegacy/PlexLinker/releases/latest/download/plexlinker-windows-amd64-setup.zip) |
+| Linux on Intel/AMD (x86-64) | [Download Linux AMD64 setup package](https://github.com/bbrandlegacy/PlexLinker/releases/latest/download/plexlinker-linux-amd64-setup.tar.gz) |
+| Linux on ARM64/AArch64 | [Download Linux ARM64 setup package](https://github.com/bbrandlegacy/PlexLinker/releases/latest/download/plexlinker-linux-arm64-setup.tar.gz) |
+| macOS on Intel | [Download macOS Intel binary](https://github.com/bbrandlegacy/PlexLinker/releases/latest/download/plexlinker-darwin-amd64) |
+| macOS on Apple Silicon | [Download macOS Apple Silicon binary](https://github.com/bbrandlegacy/PlexLinker/releases/latest/download/plexlinker-darwin-arm64) |
+
+Most Windows computers use the Windows package. Most Linux PCs and servers use
+AMD64; Raspberry Pi 4/5 and ARM servers generally use ARM64. Extract the setup
+archive and run the included installer. All files and checksums are also
+available on the [latest release page](https://github.com/bbrandlegacy/PlexLinker/releases/latest).
+
 ## Build
 
 Build v2 for the current machine:
