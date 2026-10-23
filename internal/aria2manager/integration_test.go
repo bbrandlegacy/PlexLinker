@@ -36,7 +36,8 @@ func TestManagedAria2DownloadIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	endpoint := fmt.Sprintf("http://127.0.0.1:%d/jsonrpc", port)
-	managerConfig := Config{Executable: executable, Endpoint: endpoint, Secret: secret, AutoStart: true, DataDirectory: t.TempDir()}
+	dataDirectory := t.TempDir()
+	managerConfig := Config{Executable: executable, Endpoint: endpoint, Secret: secret, AutoStart: true, DataDirectory: dataDirectory}
 	manager, err := New(managerConfig)
 	if err != nil {
 		t.Fatal(err)
@@ -60,7 +61,27 @@ func TestManagedAria2DownloadIntegration(t *testing.T) {
 		t.Fatal("reconnected manager reported aria2 as stopped")
 	}
 	client := aria2.NewClient(endpoint, secret)
-	t.Cleanup(func() { _ = client.Shutdown(context.Background(), true) })
+	t.Cleanup(func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		if err := client.Shutdown(shutdownCtx, true); err != nil {
+			t.Errorf("shut down managed aria2: %v", err)
+			return
+		}
+		// aria2 acknowledges shutdown before its process has necessarily closed
+		// the log file. Wait for that handle so TempDir cleanup is reliable on
+		// Windows, where an open file cannot be removed.
+		logPath := filepath.Join(dataDirectory, "aria2.log")
+		for shutdownCtx.Err() == nil {
+			file, openErr := os.OpenFile(logPath, os.O_WRONLY|os.O_APPEND, 0)
+			if openErr == nil {
+				_ = file.Close()
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		t.Errorf("aria2 did not release %s after shutdown", logPath)
+	})
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("plexlinker integration")) }))
 	defer server.Close()
