@@ -3,6 +3,11 @@
 `main` remains the v1 release line. All v2 work is developed and verified on
 `v2-development`; merging to `main` requires the owner's explicit approval.
 
+Status: implementation and automated acceptance are complete. The remaining
+release gate is the target-host SSH disconnect test using the real VPN account
+and mapped-drive or UNC destination. No merge or release occurs before owner
+approval.
+
 ## Stage 0 — Preserve and stabilize
 
 - Pin the v1 baseline with `baseline/v1-2026-10-23`.
@@ -47,3 +52,8 @@ migration and is replaced only after Windows acceptance testing.
 - Cross-build all supported targets and run Windows CI.
 - Test queue recovery and SSH disconnect behavior on the target Windows host.
 - Prepare release notes and a merge candidate; do not merge without approval.
+
+Automated native-Windows acceptance covers Task Scheduler registration, RPC
+reconnection, a real aria2 transfer, storage writes, and authenticated remote
+browsing. The target-host test remains intentionally separate because GitHub
+Actions cannot reproduce that server's SSH session, VPN, or storage mappings.

@@ -17,12 +17,25 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Cross-platform v2 builds, CodeQL, dependency review, Dependabot, and vulnerability scanning.
 - Built-in `doctor` command for Windows SSH, Task Scheduler, drive/UNC,
   destination write, aria2 RPC, and remote directory acceptance checks.
+- Native Windows acceptance automation that installs aria2, exercises Task
+  Scheduler persistence, reconnects through RPC, and verifies a real download.
+- Exact release-version reporting through `plexlinker --version`.
 
 ### Changed
 
 - Replaced regex-only HTML listing parsing with a root-bound DOM parser.
 - Moved v2 configuration to the per-user operating-system config directory with atomic writes.
 - Upgraded the project to Go 1.26.10 and current Bubble Tea/Bubbles/Lip Gloss releases.
+- Updated the retained tcell compatibility layer to 2.13.10.
+- Restricted releases to exact semantic-version tags whose commits are already
+  contained in `main`, with tests and metadata verification before publishing.
+
+### Fixed
+
+- Made direct destination entry start with a clean field so absolute paths,
+  Windows drive letters, and UNC paths do not append to the current directory.
+- Made directory creation prefill a platform-correct child path.
+- Wait for aria2 to release Windows file handles during managed shutdown.
 
 ### Preserved
 

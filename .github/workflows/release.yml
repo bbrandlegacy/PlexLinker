@@ -98,13 +98,25 @@ jobs:
 
     - name: Generate changelog
       id: changelog
+      shell: bash
       run: |
-        # Extract changelog for this version from CHANGELOG.md
-        if [ -f CHANGELOG.md ]; then
-          # Get content between this version and previous version/unreleased
-          sed -n "/## \[${GITHUB_REF#refs/tags/v}\]/,/## \[/p" CHANGELOG.md | sed '$d' > release_notes.md
-        else
-          echo "See CHANGELOG.md for details" > release_notes.md
+        VERSION="${GITHUB_REF#refs/tags/v}"
+        extract_section() {
+          awk -v heading="$1" '
+            $0 == "## [" heading "]" { capture = 1; next }
+            capture && /^## \[/ { exit }
+            capture && /^\[[^]]+\]:/ { exit }
+            capture { print }
+          ' CHANGELOG.md
+        }
+
+        extract_section "${VERSION}" > release_notes.md
+        if ! grep -q '[^[:space:]]' release_notes.md; then
+          extract_section "Unreleased" > release_notes.md
+        fi
+        if ! grep -q '[^[:space:]]' release_notes.md; then
+          echo "No release notes found for ${VERSION} or Unreleased." >&2
+          exit 1
         fi
 
     - name: Create Release
