@@ -119,7 +119,7 @@ jobs:
         VERSION="${GITHUB_REF#refs/tags/v}"
         extract_section() {
           awk -v heading="$1" '
-            $0 == "## [" heading "]" { capture = 1; next }
+            index($0, "## [" heading "]") == 1 { capture = 1; next }
             capture && /^## \[/ { exit }
             capture && /^\[[^]]+\]:/ { exit }
             capture { print }
