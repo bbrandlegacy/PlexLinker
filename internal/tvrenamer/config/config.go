@@ -10,12 +10,12 @@ import (
 )
 
 type TVRenamerConfig struct {
-	StartingDirectory   string              `json:"starting_directory"`
+	StartingDirectory   string                 `json:"starting_directory"`
 	PlexSettings        *patterns.PlexSettings `json:"plex_settings"`
-	CreateSeasonFolders bool                `json:"create_season_folders"`
-	AutoBackup          bool                `json:"auto_backup"`
-	LogRenames          bool                `json:"log_renames"`
-	CustomPatterns      []string            `json:"custom_patterns"`
+	CreateSeasonFolders bool                   `json:"create_season_folders"`
+	AutoBackup          bool                   `json:"auto_backup"`
+	LogRenames          bool                   `json:"log_renames"`
+	CustomPatterns      []string               `json:"custom_patterns"`
 }
 
 func NewTVRenamerConfig() *TVRenamerConfig {

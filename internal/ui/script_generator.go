@@ -23,10 +23,10 @@ type ScriptGeneratorState struct {
 	categorized   *downloader.CategorizedFiles
 	selectedFiles []string // Full URLs
 	mode          GeneratorMode
-	tvShowPath    string   // Selected path for TV shows
+	tvShowPath    string // Selected path for TV shows
 	statusMessage string
 	baseURL       string
-	currentUser   string   // Current username for task naming
+	currentUser   string // Current username for task naming
 }
 
 type ScriptGeneratorUI struct {
@@ -118,7 +118,6 @@ func (ui *ScriptGeneratorUI) browseTVPath() {
 		}
 	}
 }
-
 
 func (ui *ScriptGeneratorUI) generateAndRun(executeScripts bool) error {
 	state := ui.state

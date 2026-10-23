@@ -8,11 +8,11 @@ import (
 )
 
 var (
-	user32                  = syscall.NewLazyDLL("user32.dll")
-	procEnumWindows         = user32.NewProc("EnumWindows")
+	user32                       = syscall.NewLazyDLL("user32.dll")
+	procEnumWindows              = user32.NewProc("EnumWindows")
 	procGetWindowThreadProcessId = user32.NewProc("GetWindowThreadProcessId")
-	procSetForegroundWindow = user32.NewProc("SetForegroundWindow")
-	procIsWindowVisible     = user32.NewProc("IsWindowVisible")
+	procSetForegroundWindow      = user32.NewProc("SetForegroundWindow")
+	procIsWindowVisible          = user32.NewProc("IsWindowVisible")
 )
 
 // BringProcessWindowToFront brings the window of the specified process to the foreground

@@ -16,13 +16,13 @@ import (
 // Right: Enter selected directory
 // Enter: Select current directory
 type DirectoryBrowserUI struct {
-	screen         *tcell.Screen
-	currentPath    string
-	entries        []os.DirEntry
-	selectedIndex  int
-	scrollOffset   int
-	statusMessage  string
-	title          string
+	screen        *tcell.Screen
+	currentPath   string
+	entries       []os.DirEntry
+	selectedIndex int
+	scrollOffset  int
+	statusMessage string
+	title         string
 }
 
 func NewDirectoryBrowserUI(screen *tcell.Screen, initialPath, title string) *DirectoryBrowserUI {
@@ -43,8 +43,8 @@ func NewDirectoryBrowserUI(screen *tcell.Screen, initialPath, title string) *Dir
 	}
 
 	ui := &DirectoryBrowserUI{
-		screen:  screen,
-		title:   title,
+		screen: screen,
+		title:  title,
 	}
 
 	ui.loadDirectory(absPath)

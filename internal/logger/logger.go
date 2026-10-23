@@ -127,13 +127,13 @@ func (l *Logger) getLogger(namespace string) *log.Logger {
 }
 
 // Namespace loggers
-func (l *Logger) Main() *log.Logger        { return l.getLogger("MAIN") }
-func (l *Logger) UI() *log.Logger          { return l.getLogger("UI") }
-func (l *Logger) Client() *log.Logger      { return l.getLogger("CLIENT") }
-func (l *Logger) Browser() *log.Logger     { return l.getLogger("BROWSER") }
-func (l *Logger) Downloader() *log.Logger  { return l.getLogger("DOWNLOADER") }
-func (l *Logger) Config() *log.Logger      { return l.getLogger("CONFIG") }
-func (l *Logger) TVRenamer() *log.Logger   { return l.getLogger("TVRENAMER") }
+func (l *Logger) Main() *log.Logger       { return l.getLogger("MAIN") }
+func (l *Logger) UI() *log.Logger         { return l.getLogger("UI") }
+func (l *Logger) Client() *log.Logger     { return l.getLogger("CLIENT") }
+func (l *Logger) Browser() *log.Logger    { return l.getLogger("BROWSER") }
+func (l *Logger) Downloader() *log.Logger { return l.getLogger("DOWNLOADER") }
+func (l *Logger) Config() *log.Logger     { return l.getLogger("CONFIG") }
+func (l *Logger) TVRenamer() *log.Logger  { return l.getLogger("TVRENAMER") }
 
 // Helper methods for common operations
 func (l *Logger) Printf(namespace, format string, v ...interface{}) {

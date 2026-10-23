@@ -157,4 +157,3 @@ func (c *Config) Save() error {
 
 	return nil
 }
-

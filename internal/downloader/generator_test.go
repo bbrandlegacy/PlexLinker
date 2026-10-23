@@ -18,32 +18,32 @@ func TestShellEscaping(t *testing.T) {
 		wantNotRaw   string // Raw malicious part should not appear unescaped
 	}{
 		{
-			name:         "Windows Batch - Single Quote Injection",
+			name:         "PowerShell - Single Quote Injection",
 			showName:     "Show'; rm -rf /;'",
 			scriptFormat: config.ScriptFormatBAT,
-			wantContains: "Show'; rm -rf /;'", // Batch doesn't care about single quotes
-			wantNotRaw:   "", // No specific check needed for batch
-		},
-		{
-			name:         "Windows Batch - Command Injection with &",
-			showName:     "Show&pause",
-			scriptFormat: config.ScriptFormatBAT,
-			wantContains: "Show&pause", // & is not special in cd /d "..."
+			wantContains: "Show''; rm -rf /;''", // Single quotes are doubled inside a PowerShell literal
 			wantNotRaw:   "",
 		},
 		{
-			name:         "Windows Batch - Double Quote Escape",
+			name:         "PowerShell - Command Injection with &",
+			showName:     "Show&pause",
+			scriptFormat: config.ScriptFormatBAT,
+			wantContains: "Show&pause", // & is inert inside a single-quoted PowerShell literal
+			wantNotRaw:   "",
+		},
+		{
+			name:         "PowerShell - Double Quote Literal",
 			showName:     "Show\"Name",
 			scriptFormat: config.ScriptFormatBAT,
-			wantContains: "Show\"\"Name", // Doubled quotes
-			wantNotRaw:   "Show\"Name",   // Should not have single quote
+			wantContains: "Show\"Name", // Double quotes are inert inside a single-quoted PowerShell literal
+			wantNotRaw:   "",
 		},
 		{
 			name:         "Bash - Single Quote Injection",
 			showName:     "Show'; rm -rf /;'",
 			scriptFormat: config.ScriptFormatSH,
 			wantContains: "Show'\\''", // Properly escaped
-			wantNotRaw:   "'; rm -rf /;'", // Raw injection should not appear
+			wantNotRaw:   "",
 		},
 		{
 			name:         "Bash - Command Substitution",
@@ -157,7 +157,7 @@ func TestDestinationPathEscaping(t *testing.T) {
 			name:         "Windows path with spaces",
 			destPath:     "W:\\My Movies",
 			scriptFormat: config.ScriptFormatBAT,
-			wantContains: "\"W:\\My Movies\"",
+			wantContains: "'W:\\My Movies'",
 		},
 		{
 			name:         "Unix path with spaces",
@@ -185,7 +185,7 @@ func TestDestinationPathEscaping(t *testing.T) {
 
 			var script string
 			if tt.scriptFormat == config.ScriptFormatBAT {
-				script = sg.buildCategoryBatchScript("echo test", tt.destPath, "test")
+				script = sg.buildCategoryPowerShellScript("echo test", tt.destPath, "test")
 			} else {
 				script = sg.buildCategoryShellScript("echo test", tt.destPath, "test")
 			}

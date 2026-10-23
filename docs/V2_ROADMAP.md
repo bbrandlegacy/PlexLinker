@@ -1,0 +1,45 @@
+# PlexLinker v2 roadmap
+
+`main` remains the v1 release line. All v2 work is developed and verified on
+`v2-development`; merging to `main` requires the owner's explicit approval.
+
+## Stage 0 — Preserve and stabilize
+
+- Pin the v1 baseline with `v1-baseline-2026-10-23`.
+- Align the Go toolchain, CI, release, formatting, linting, and tests.
+- Add dependency review, CodeQL, Dependabot, and release concurrency guards.
+- Capture the v2 architecture and compatibility boundaries.
+
+## Stage 1 — Durable download engine
+
+- Implement a typed aria2 JSON-RPC client.
+- Add queue, active, waiting, stopped, pause, resume, retry, and remove flows.
+- Persist aria2 sessions and reconnect after PlexLinker restarts.
+- Retain the script backend until Windows acceptance testing passes.
+
+## Stage 2 — Filesystems and destinations
+
+- Introduce a platform-neutral volume and directory API.
+- Support Windows drive letters, UNC paths, labels, free space, and favorites.
+- Support `/Volumes` on macOS and mount points on Linux.
+- Add fake providers for deterministic macOS development and CI.
+
+## Stage 3 — TUI v2
+
+- Move to Bubble Tea v2, Bubbles v2, and Lip Gloss v2.
+- Provide remote browser, selection basket, destination picker, and downloads.
+- Make network and filesystem work cancellable and event-driven.
+- Add headless model tests and a local demo directory server.
+
+## Stage 4 — Service integration
+
+- Windows: Task Scheduler-managed aria2, with optional psmux convenience.
+- Linux: systemd user service, with optional tmux convenience.
+- macOS: development subprocess and optional launchd/Homebrew service support.
+
+## Stage 5 — Migration and acceptance
+
+- Migrate configuration without destroying the v1 file.
+- Cross-build all supported targets and run Windows CI.
+- Test queue recovery and SSH disconnect behavior on the target Windows host.
+- Prepare release notes and a merge candidate; do not merge without approval.

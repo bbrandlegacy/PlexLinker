@@ -535,7 +535,6 @@ func (ui *BrowserUI) showConfirmationModal(message string) bool {
 	}
 }
 
-
 func (ui *BrowserUI) showScriptViewer(scriptPath, scriptContent string) {
 	scriptViewer := NewScriptViewerUI(ui.screen, scriptPath, scriptContent)
 
@@ -553,7 +552,6 @@ func (ui *BrowserUI) showScriptViewer(scriptPath, scriptContent string) {
 		}
 	}
 }
-
 
 func (ui *BrowserUI) showSelectedFiles() bool {
 	if len(ui.state.selectedFiles) == 0 {

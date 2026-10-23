@@ -19,10 +19,10 @@ type PreviewItem struct {
 }
 
 type PreviewUI struct {
-	screen       *tcell.Screen
-	items        []PreviewItem
-	scrollOffset int
-	conflicts    []string
+	screen        *tcell.Screen
+	items         []PreviewItem
+	scrollOffset  int
+	conflicts     []string
 	statusMessage string
 }
 
@@ -71,9 +71,9 @@ func NewPreviewUI(screen *tcell.Screen, selectedFiles map[string]*filesystem.Fil
 	})
 
 	return &PreviewUI{
-		screen:    screen,
-		items:     items,
-		conflicts: conflicts,
+		screen:        screen,
+		items:         items,
+		conflicts:     conflicts,
 		statusMessage: fmt.Sprintf("Preview for %d files", len(items)),
 	}
 }
