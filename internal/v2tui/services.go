@@ -5,6 +5,7 @@ import (
 
 	"plexlinker/internal/browser"
 	"plexlinker/internal/client"
+	"plexlinker/internal/config"
 	"plexlinker/internal/downloads"
 	"plexlinker/internal/storage"
 )
@@ -66,4 +67,6 @@ type Services struct {
 	Username       string
 	Password       string
 	StartupMessage string
+	Config         *config.Config
+	SaveConfig     func(*config.Config) error
 }

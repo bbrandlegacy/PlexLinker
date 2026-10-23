@@ -60,6 +60,8 @@ func run() error {
 		Username:       cfg.Username,
 		Password:       cfg.Password,
 		StartupMessage: startupMessage,
+		Config:         cfg,
+		SaveConfig:     func(updated *config.Config) error { return updated.SaveV2() },
 	})
 	program := tea.NewProgram(model)
 	_, err = program.Run()

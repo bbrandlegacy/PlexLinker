@@ -5,13 +5,16 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/progress"
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"plexlinker/internal/browser"
+	"plexlinker/internal/config"
 	"plexlinker/internal/downloads"
 	"plexlinker/internal/storage"
 )
@@ -23,6 +26,7 @@ const (
 	TabSelection
 	TabDestination
 	TabDownloads
+	TabSettings
 )
 
 type selectedFile struct{ URL, Name string }
@@ -44,6 +48,8 @@ type Model struct {
 	jobs               []downloads.Job
 	downloadCursor     int
 	progress           progress.Model
+	settingsInputs     []textinput.Model
+	settingsCursor     int
 }
 
 type remoteLoadedMsg struct {
@@ -78,7 +84,9 @@ func New(services Services) *Model {
 	if status == "" {
 		status = "Connecting…"
 	}
-	return &Model{services: services, selected: make(map[string]selectedFile), status: status, loading: true, progress: progress.New(progress.WithDefaultBlend(), progress.WithoutPercentage())}
+	m := &Model{services: services, selected: make(map[string]selectedFile), status: status, loading: true, progress: progress.New(progress.WithDefaultBlend(), progress.WithoutPercentage())}
+	m.initializeSettings()
+	return m
 }
 
 func (m *Model) Init() tea.Cmd {
@@ -91,6 +99,9 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.progress.SetWidth(max(8, min(28, msg.Width/4)))
 	case tea.KeyPressMsg:
+		if m.tab == TabSettings {
+			return m.handleSettingsKey(msg)
+		}
 		return m.handleKey(msg)
 	case remoteLoadedMsg:
 		m.loading = false
@@ -160,10 +171,13 @@ func (m *Model) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "4":
 		m.tab = TabDownloads
 		return m, m.loadJobs()
+	case "5":
+		m.tab = TabSettings
+		m.focusSetting(0)
 	case "tab":
-		m.tab = (m.tab + 1) % 4
+		m.tab = (m.tab + 1) % 5
 	case "shift+tab":
-		m.tab = (m.tab + 3) % 4
+		m.tab = (m.tab + 4) % 5
 	case "up", "k":
 		m.move(-1)
 	case "down", "j":
@@ -211,6 +225,8 @@ func (m *Model) move(delta int) {
 	case TabDownloads:
 		length = len(m.jobs)
 		cursor = &m.downloadCursor
+	case TabSettings:
+		return
 	}
 	if length == 0 {
 		*cursor = 0
@@ -361,6 +377,92 @@ func (m *Model) loadJobs() tea.Cmd {
 }
 func tick() tea.Cmd { return tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return tickMsg(t) }) }
 
+var settingLabels = []string{"Remote base URL", "HTTP username", "HTTP password", "aria2 RPC endpoint", "aria2 RPC secret", "Max concurrent downloads"}
+
+func (m *Model) initializeSettings() {
+	values := []string{"", "", "", "http://127.0.0.1:6800/jsonrpc", "", "3"}
+	if cfg := m.services.Config; cfg != nil {
+		values = []string{cfg.BaseURL, cfg.Username, cfg.Password, cfg.Aria2Endpoint, cfg.Aria2Secret, strconv.Itoa(cfg.MaxConcurrentDownloads)}
+	}
+	m.settingsInputs = make([]textinput.Model, len(values))
+	for index, value := range values {
+		input := textinput.New()
+		input.SetValue(value)
+		input.SetWidth(60)
+		input.Prompt = ""
+		if index == 2 || index == 4 {
+			input.EchoMode = textinput.EchoPassword
+			input.EchoCharacter = '•'
+		}
+		m.settingsInputs[index] = input
+	}
+}
+
+func (m *Model) focusSetting(index int) {
+	if len(m.settingsInputs) == 0 {
+		return
+	}
+	m.settingsCursor = (index + len(m.settingsInputs)) % len(m.settingsInputs)
+	for i := range m.settingsInputs {
+		if i == m.settingsCursor {
+			m.settingsInputs[i].Focus()
+		} else {
+			m.settingsInputs[i].Blur()
+		}
+	}
+}
+
+func (m *Model) handleSettingsKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch key.String() {
+	case "esc":
+		for i := range m.settingsInputs {
+			m.settingsInputs[i].Blur()
+		}
+		m.tab = TabRemote
+		return m, nil
+	case "tab", "down":
+		m.focusSetting(m.settingsCursor + 1)
+		return m, nil
+	case "shift+tab", "up":
+		m.focusSetting(m.settingsCursor - 1)
+		return m, nil
+	case "ctrl+s":
+		return m, m.saveSettings()
+	}
+	var command tea.Cmd
+	m.settingsInputs[m.settingsCursor], command = m.settingsInputs[m.settingsCursor].Update(key)
+	return m, command
+}
+
+func (m *Model) saveSettings() tea.Cmd {
+	return func() tea.Msg {
+		cfg := m.services.Config
+		if cfg == nil {
+			cfg = config.NewConfig()
+		}
+		cfg.BaseURL = m.settingsInputs[0].Value()
+		cfg.Username = m.settingsInputs[1].Value()
+		cfg.Password = m.settingsInputs[2].Value()
+		cfg.Aria2Endpoint = m.settingsInputs[3].Value()
+		cfg.Aria2Secret = m.settingsInputs[4].Value()
+		concurrent, err := strconv.Atoi(m.settingsInputs[5].Value())
+		if err != nil || concurrent < 1 {
+			return actionMsg{err: fmt.Errorf("max concurrent downloads must be a positive number")}
+		}
+		cfg.MaxConcurrentDownloads = concurrent
+		if err := cfg.ValidateV2(); err != nil {
+			return actionMsg{err: err}
+		}
+		if m.services.SaveConfig == nil {
+			return actionMsg{err: fmt.Errorf("configuration saving is unavailable")}
+		}
+		if err := m.services.SaveConfig(cfg); err != nil {
+			return actionMsg{err: err}
+		}
+		return actionMsg{message: "Settings saved; restart PlexLinker to reconnect with changed endpoints"}
+	}
+}
+
 var (
 	accent        = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true)
 	muted         = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
@@ -372,7 +474,7 @@ func (m *Model) View() tea.View {
 	var b strings.Builder
 	b.WriteString(accent.Render("PlexLinker v2"))
 	b.WriteString("  ")
-	for index, label := range []string{"1 Remote", "2 Selection", "3 Destination", "4 Downloads"} {
+	for index, label := range []string{"1 Remote", "2 Selection", "3 Destination", "4 Downloads", "5 Settings"} {
 		style := muted
 		if int(m.tab) == index {
 			style = accent
@@ -392,6 +494,8 @@ func (m *Model) View() tea.View {
 		m.viewDestination(&b)
 	case TabDownloads:
 		m.viewDownloads(&b)
+	case TabSettings:
+		m.viewSettings(&b)
 	}
 	b.WriteString("\n")
 	b.WriteString(muted.Render(strings.Repeat("─", max(1, m.width))))
@@ -401,7 +505,11 @@ func (m *Model) View() tea.View {
 		b.WriteString("  …")
 	}
 	b.WriteString("\n")
-	b.WriteString(muted.Render("Tab switch • ↑/↓ navigate • Enter select/open • d queue • q quit"))
+	if m.tab == TabSettings {
+		b.WriteString(muted.Render("Tab/↑/↓ fields • Ctrl+S save • Esc return"))
+	} else {
+		b.WriteString(muted.Render("Tab switch • ↑/↓ navigate • Enter select/open • d queue • q quit"))
+	}
 	view := tea.NewView(b.String())
 	view.AltScreen = true
 	return view
@@ -457,6 +565,16 @@ func (m *Model) viewDownloads(b *strings.Builder) {
 	for i, j := range m.jobs {
 		text := fmt.Sprintf("%-9s %s %5.1f%% %8s/s  %s", j.State, m.progress.ViewAs(j.Progress()), j.Progress()*100, formatBytes(j.BytesPerSecond), j.Name)
 		m.row(b, i == m.downloadCursor, text)
+	}
+}
+func (m *Model) viewSettings(b *strings.Builder) {
+	b.WriteString("Settings\n")
+	for index := range m.settingsInputs {
+		label := muted.Render(settingLabels[index])
+		if index == m.settingsCursor {
+			label = accent.Render(settingLabels[index])
+		}
+		b.WriteString(label + "\n  " + m.settingsInputs[index].View() + "\n")
 	}
 }
 func (m *Model) row(b *strings.Builder, active bool, text string) {

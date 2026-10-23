@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"plexlinker/internal/browser"
+	"plexlinker/internal/config"
 	"plexlinker/internal/downloads"
 	"plexlinker/internal/storage"
 )
@@ -97,5 +98,25 @@ func TestQueueRequiresDestination(t *testing.T) {
 	}
 	if model.tab != TabDestination {
 		t.Fatalf("tab = %v", model.tab)
+	}
+}
+
+func TestSettingsSave(t *testing.T) {
+	t.Parallel()
+	model, _ := testModel()
+	cfg := config.NewConfig()
+	model.services.Config = cfg
+	saved := false
+	model.services.SaveConfig = func(updated *config.Config) error { saved = true; return nil }
+	model.initializeSettings()
+	model.settingsInputs[0].SetValue("https://media.example.test/files/")
+	model.settingsInputs[1].SetValue("user")
+	model.settingsInputs[2].SetValue("pass")
+	model.settingsInputs[3].SetValue("http://127.0.0.1:6800/jsonrpc")
+	model.settingsInputs[5].SetValue("5")
+	message := model.saveSettings()()
+	model.Update(message)
+	if !saved || cfg.MaxConcurrentDownloads != 5 || cfg.BaseURL != "https://media.example.test/files/" {
+		t.Fatalf("saved=%v config=%#v", saved, cfg)
 	}
 }
