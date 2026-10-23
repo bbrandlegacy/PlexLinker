@@ -33,13 +33,15 @@ func Ensure() error {
 	if script == "" {
 		return nil
 	}
-	fmt.Fprintln(os.Stdout, "PlexLinker first-time setup is required.")
-	fmt.Fprintln(os.Stdout, "The installer will:")
+	var notice strings.Builder
+	notice.WriteString("PlexLinker first-time setup is required.\nThe installer will:\n")
 	for _, change := range changes {
-		fmt.Fprintln(os.Stdout, "  - "+change)
+		notice.WriteString("  - " + change + "\n")
 	}
-	fmt.Fprintln(os.Stdout, "No administrator password or reusable credential will be stored.")
-	fmt.Fprint(os.Stdout, "Proceed with setup? [y/N]: ")
+	notice.WriteString("No administrator password or reusable credential will be stored.\nProceed with setup? [y/N]: ")
+	if _, err := fmt.Fprint(os.Stdout, notice.String()); err != nil {
+		return fmt.Errorf("write setup notice: %w", err)
+	}
 	answer, err := bufio.NewReader(os.Stdin).ReadString('\n')
 	if err != nil {
 		return fmt.Errorf("read setup confirmation: %w", err)
@@ -68,7 +70,7 @@ func installer() (string, []string, []string, error) {
 	if runtime.GOOS == "windows" {
 		script := filepath.Join(directory, "setup-windows.ps1")
 		if _, err := os.Stat(script); err != nil {
-			return script, nil, nil, fmt.Errorf("Windows setup script is missing beside PlexLinker: %s", script)
+			return script, nil, nil, fmt.Errorf("windows setup script is missing beside PlexLinker: %s", script)
 		}
 		return script, []string{"powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File"}, []string{
 			"request Windows administrator approval through UAC",
@@ -80,7 +82,7 @@ func installer() (string, []string, []string, error) {
 	if runtime.GOOS == "linux" {
 		script := filepath.Join(directory, "setup-linux.sh")
 		if _, err := os.Stat(script); err != nil {
-			return script, nil, nil, fmt.Errorf("Linux setup script is missing beside PlexLinker: %s", script)
+			return script, nil, nil, fmt.Errorf("linux setup script is missing beside PlexLinker: %s", script)
 		}
 		return script, []string{"bash"}, []string{
 			"validate sudo access using the operating system password prompt",
