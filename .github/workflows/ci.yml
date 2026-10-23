@@ -130,6 +130,14 @@ jobs:
             throw "Managed aria2 download integration failed with exit code $LASTEXITCODE."
           }
 
+          # The integration test deliberately uses the production task name.
+          # Reset it before doctor so a just-finished Task Scheduler instance
+          # cannot suppress the second launch while Windows updates task state.
+          schtasks /end /tn PlexLinker_aria2 2>$null
+          schtasks /delete /tn PlexLinker_aria2 /f 2>$null
+          Get-Process aria2c -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep -Milliseconds 500
+
           & .\plexlinker-v2.exe doctor --destination "$env:RUNNER_TEMP" --timeout 30s
           if ($LASTEXITCODE -ne 0) {
             throw "PlexLinker doctor failed with exit code $LASTEXITCODE."
