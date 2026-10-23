@@ -205,3 +205,13 @@ func (c *Client) Version(ctx context.Context) (string, error) {
 	err := c.call(ctx, "aria2.getVersion", nil, &version)
 	return version.Version, err
 }
+
+// Shutdown stops aria2. It is primarily used by managed integration tests and
+// explicit service administration; closing the PlexLinker TUI never calls it.
+func (c *Client) Shutdown(ctx context.Context, force bool) error {
+	method := "aria2.shutdown"
+	if force {
+		method = "aria2.forceShutdown"
+	}
+	return c.call(ctx, method, nil, nil)
+}
