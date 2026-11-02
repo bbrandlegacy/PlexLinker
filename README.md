@@ -5,7 +5,7 @@ HTTPS directory and handing selected files to a persistent aria2 download
 service. It is designed to be operated through SSH: downloads continue after
 the SSH connection and TUI close.
 
-PlexLinker v2.0.0 is the current production release. The original application
+PlexLinker v2.1.0 is the current production release. The original application
 remains preserved by the `baseline/v1-2026-10-23` tag and legacy release binary.
 
 ## What v2 provides
