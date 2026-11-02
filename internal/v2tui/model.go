@@ -1371,11 +1371,12 @@ func (m *Model) View() tea.View {
 	if m.pickerTarget != pickerNone {
 		b.WriteString(muted.Render("↑/↓ choose • Enter/→ open • ← parent • Esc use current folder • r refresh • g path • n new folder • f favorite"))
 	} else if m.tab == TabSettings {
-		if m.settingsPage == 2 {
+		switch m.settingsPage {
+		case 2:
 			b.WriteString(muted.Render("↑/↓ scroll • r refresh • Esc back"))
-		} else if m.settingsPage == 1 {
+		case 1:
 			b.WriteString(muted.Render("↑/↓ choose • Enter open/run • Esc back"))
-		} else {
+		default:
 			b.WriteString(muted.Render("Tab/↑/↓ fields • terminal paste supported • Ctrl+S save/apply • Esc return"))
 		}
 	} else if m.tab == TabSelection {
