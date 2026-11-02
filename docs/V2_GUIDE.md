@@ -29,7 +29,7 @@ Confirm an installed binary and its embedded release version with
 2. Run PlexLinker and press `5` for Settings.
 3. Enter the HTTPS directory URL, HTTP username, and HTTP password.
 4. Keep the local aria2 endpoint unless an existing RPC service is preferred.
-5. Press `Ctrl+S`, exit, and start PlexLinker again.
+5. Press `Ctrl+S`. PlexLinker validates and applies the settings immediately.
 
 On Windows, PlexLinker registers `PlexLinker_aria2` in Task Scheduler and starts
 it immediately. Downloads run in that task and survive the SSH client. The RPC
@@ -42,6 +42,8 @@ current user's config directory.
   `Left` returns to its parent; `Enter`/`Space` toggles a file.
 - `a`: toggle all media files in the current directory on or off.
 - `s`: recursively scan and select media below the current directory.
+- `/`: type a case-insensitive filter for the current browser listing. Press
+  `Enter` to navigate the filtered list or `Esc` to clear it.
 - `2`: review selections. PlexLinker infers TV from season/episode markers such
   as `S01`, `S01E01`, `Season 1`, and `1x01`; other names default to Movies.
 - In Selection, use `Up`/`Down` for rows and `Left`/`Right` for the filename or
@@ -59,6 +61,25 @@ current user's config directory.
 - `4`: temporarily hand the terminal to the TV renamer and return when done.
 - `5`: edit settings, including the default Movies and TV paths. Press `Enter`
   on either path to choose it through the same drive-aware directory picker.
+  The final row opens Developer & maintenance for logs, manual updates, and
+  rollback. Terminal-native paste works in all text fields over SSH.
+
+## Manual updates and rollback
+
+PlexLinker does not check for updates in the background. Open Settings,
+Developer & maintenance, then choose Check for updates or Install latest
+update. Releases are read from the public GitHub repository; the matching
+platform binary is accepted only after its SHA-256 value matches the published
+`checksums.txt`. Updating saves the current executable as a rollback binary.
+
+Updates installed under `/usr/local/bin` may request `sudo`. Windows setup
+grants only the installing user modify access to the PlexLinker program folder,
+allowing later verified updates without another setup run. The application
+closes after binary replacement; Windows reopens it after the running file is
+released.
+
+The same maintenance screen exposes the persistent `plexlinker.log`, keeps the
+latest 1,000 entries available in the TUI, and can clear it.
 
 Drive letters mapped in an interactive Windows login are not always visible to
 OpenSSH or Task Scheduler. If `W:` or `N:` is absent, use its UNC path and save

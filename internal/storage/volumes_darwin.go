@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+
+	"golang.org/x/sys/unix"
 )
 
 type darwinVolumeProvider struct{}
@@ -30,11 +32,15 @@ func (darwinVolumeProvider) ListVolumes(ctx context.Context) ([]Volume, error) {
 		}
 		volumes = append(volumes, inspectUnixVolume(path))
 	}
+	RankVolumes(volumes)
 	return volumes, nil
 }
 
 func inspectUnixVolume(path string) Volume {
-	volume := Volume{Path: path, Label: filepath.Base(path), Kind: VolumeFixed, Available: true}
+	volume := Volume{Path: path, Label: filepath.Base(path), Kind: VolumeFixed, Available: true, Writable: unix.Access(path, unix.W_OK) == nil, External: path != "/", System: path == "/"}
+	if path != "/" {
+		volume.Kind = VolumeRemovable
+	}
 	if path == "/" {
 		volume.Label = "System"
 	}
@@ -45,5 +51,6 @@ func inspectUnixVolume(path string) Volume {
 	}
 	volume.TotalBytes = uint64(stat.Blocks) * uint64(stat.Bsize)
 	volume.FreeBytes = uint64(stat.Bavail) * uint64(stat.Bsize)
+	DiscoverMediaPaths(&volume)
 	return volume
 }

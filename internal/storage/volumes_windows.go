@@ -5,6 +5,8 @@ package storage
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/sys/windows"
@@ -30,22 +32,27 @@ func (windowsVolumeProvider) ListVolumes(ctx context.Context) ([]Volume, error) 
 		root := fmt.Sprintf("%c:\\", 'A'+index)
 		volumes = append(volumes, inspectWindowsVolume(root))
 	}
+	RankVolumes(volumes)
 	return volumes, nil
 }
 
 func inspectWindowsVolume(root string) Volume {
-	volume := Volume{Path: root, Kind: VolumeUnknown, Available: true}
+	systemRoot := strings.ToUpper(filepath.VolumeName(os.Getenv("SystemRoot")) + `\`)
+	volume := Volume{Path: root, Kind: VolumeUnknown, Available: true, Writable: true, System: strings.EqualFold(root, systemRoot)}
 	rootPtr, err := windows.UTF16PtrFromString(root)
 	if err != nil {
 		volume.Available, volume.Error = false, err.Error()
 		return volume
 	}
 	volume.Kind = windowsDriveKind(windows.GetDriveType(rootPtr))
+	volume.External = volume.Kind == VolumeRemovable
 	label := make([]uint16, windows.MAX_PATH+1)
 	filesystem := make([]uint16, windows.MAX_PATH+1)
-	if err := windows.GetVolumeInformation(rootPtr, &label[0], uint32(len(label)), nil, nil, nil, &filesystem[0], uint32(len(filesystem))); err == nil {
+	var flags uint32
+	if err := windows.GetVolumeInformation(rootPtr, &label[0], uint32(len(label)), nil, nil, &flags, &filesystem[0], uint32(len(filesystem))); err == nil {
 		volume.Label = windows.UTF16ToString(label)
 		volume.FileSystem = windows.UTF16ToString(filesystem)
+		volume.Writable = flags&windows.FILE_READ_ONLY_VOLUME == 0
 	} else if volume.Kind != VolumeOptical {
 		volume.Available = false
 		volume.Error = err.Error()
@@ -58,6 +65,7 @@ func inspectWindowsVolume(root string) Volume {
 		volume.Error = err.Error()
 	}
 	volume.Label = strings.TrimSpace(volume.Label)
+	DiscoverMediaPaths(&volume)
 	return volume
 }
 

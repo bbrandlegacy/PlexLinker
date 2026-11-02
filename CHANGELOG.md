@@ -4,6 +4,33 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-01
+
+### Added
+
+- Terminal-native bracketed paste in Settings, destination prompts, and browser
+  search, including SSH sessions without a remote graphical clipboard.
+- Live case-insensitive `/` filtering for remote browser listings.
+- Manual public-GitHub update checks, checksum-verified self-update, and an
+  in-app rollback binary under Developer & maintenance.
+- Persistent user-visible message/error logging with an in-app viewer and clear
+  action.
+- Ranked external/network storage discovery with writable state, free space,
+  refresh, conventional media-folder detection, and automatic destination
+  creation.
+
+### Changed
+
+- Apply saved remote, credential, path, aria2 endpoint, secret, and concurrency
+  changes without restarting PlexLinker.
+- Rank writable external volumes ahead of system storage in destination
+  selection.
+
+### Security
+
+- Upgrade `golang.org/x/net` to v0.62.0 to address GO-2026-6860 in HTML text
+  node coalescing used by remote directory parsing.
+
 ## [2.0.0] - 2026-10-23
 
 ### Added
@@ -66,5 +93,6 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 - The original tcell application remains available as the v1 legacy rollback artifact.
 
-[Unreleased]: https://github.com/bbrandlegacy/PlexLinker/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/bbrandlegacy/PlexLinker/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/bbrandlegacy/PlexLinker/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/bbrandlegacy/PlexLinker/compare/baseline/v1-2026-10-23...v2.0.0

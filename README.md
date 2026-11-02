@@ -5,7 +5,7 @@ HTTPS directory and handing selected files to a persistent aria2 download
 service. It is designed to be operated through SSH: downloads continue after
 the SSH connection and TUI close.
 
-PlexLinker v2.0.0 is the current production release. The original application
+PlexLinker v2.1.0 is the current production release. The original application
 remains preserved by the `baseline/v1-2026-10-23` tag and legacy release binary.
 
 ## What v2 provides
@@ -142,6 +142,8 @@ on loopback and uses a generated secret stored in the per-user config.
 - `Enter` or `Space` toggles a file selection.
 - `a` toggles all files in the current directory: select all, then deselect all.
 - `s` recursively selects files below the current directory.
+- `/` opens a live, case-insensitive filename filter. Press `Enter` to keep the
+  filtered list or `Esc` to clear it.
 
 ### Selection
 
@@ -167,6 +169,12 @@ Names containing markers such as `S01`, `S01E01`, `Season 1`, `1x01`, or
 - `g` enters a path directly, including `\\server\share\folder`.
 - `n` creates and enters a directory.
 - `f` saves the current path as a favorite.
+- `r` refreshes mounted drives and free-space information.
+
+External and network volumes are ranked ahead of the system disk. With a
+default destination set to `auto`, PlexLinker looks for conventional Movies or
+Shows folders on writable media volumes and creates the selected conventional
+folder only when a download is submitted.
 
 ### Downloads
 
@@ -189,6 +197,18 @@ beside the executable is copied on first use and is never modified in place.
 Supported environment overrides are `PLEX_BASE_URL`, `PLEX_USERNAME`,
 `PLEX_PASSWORD`, `PLEXLINKER_ARIA2_ENDPOINT`, and
 `PLEXLINKER_ARIA2_SECRET`.
+
+Settings accept the local terminal's normal paste shortcut over SSH. Saving
+with `Ctrl+S` validates and applies changed HTTP credentials, paths, aria2 RPC
+settings, and concurrency without restarting PlexLinker.
+
+The final Settings row opens **Developer & maintenance**, where you can inspect
+or clear the persistent message/error log, manually check for a release,
+install a checksum-verified update, or restore the rollback binary. Update
+checks are never automatic. The first successful update saves the currently
+installed executable as the rollback version.
+
+The diagnostics log is stored beside `config.json` as `plexlinker.log`.
 
 ## Windows and SSH acceptance
 
