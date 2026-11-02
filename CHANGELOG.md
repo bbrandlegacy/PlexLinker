@@ -24,6 +24,11 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Rank writable external volumes ahead of system storage in destination
   selection.
 
+### Security
+
+- Upgrade `golang.org/x/net` to v0.62.0 to address GO-2026-6860 in HTML text
+  node coalescing used by remote directory parsing.
+
 ## [2.0.0] - 2026-10-23
 
 ### Added
