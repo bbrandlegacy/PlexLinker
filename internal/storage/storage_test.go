@@ -52,3 +52,33 @@ func TestBrowserHonorsCancelledContext(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+func TestRankVolumesPrefersWritableExternalSpace(t *testing.T) {
+	t.Parallel()
+	volumes := []Volume{
+		{Path: "/", System: true, Writable: true, FreeBytes: 10 << 40},
+		{Path: "/mnt/small", External: true, Writable: true, FreeBytes: 1 << 40},
+		{Path: "/mnt/large", External: true, Writable: true, FreeBytes: 2 << 40},
+		{Path: "/mnt/locked", External: true, Writable: false, FreeBytes: 3 << 40},
+	}
+	RankVolumes(volumes)
+	if volumes[0].Path != "/mnt/large" || volumes[1].Path != "/mnt/small" || volumes[len(volumes)-1].Path != "/mnt/locked" {
+		t.Fatalf("ranked volumes = %#v", volumes)
+	}
+}
+
+func TestDiscoverMediaPathsFindsConventionalFolders(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "Plex", "Movies"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "TV Shows"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	volume := Volume{Path: root, Available: true}
+	DiscoverMediaPaths(&volume)
+	if volume.MoviesPath != filepath.Join(root, "Plex", "Movies") || volume.TVPath != filepath.Join(root, "TV Shows") {
+		t.Fatalf("discovered paths = %#v", volume)
+	}
+}

@@ -202,6 +202,11 @@ func (c *Client) SaveSession(ctx context.Context) error {
 	return c.call(ctx, "aria2.saveSession", nil, nil)
 }
 
+// ChangeGlobalOption applies supported aria2 options without restarting the daemon.
+func (c *Client) ChangeGlobalOption(ctx context.Context, options map[string]string) error {
+	return c.call(ctx, "aria2.changeGlobalOption", []any{options}, nil)
+}
+
 func (c *Client) Version(ctx context.Context) (string, error) {
 	var version struct {
 		Version string `json:"version"`

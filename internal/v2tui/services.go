@@ -9,6 +9,7 @@ import (
 	"plexlinker/internal/config"
 	"plexlinker/internal/downloads"
 	"plexlinker/internal/storage"
+	"plexlinker/internal/updater"
 )
 
 type RemoteService interface {
@@ -61,16 +62,41 @@ type DownloadService interface {
 	RemoveResult(context.Context, string) error
 }
 
+type AppliedServices struct {
+	Remote    RemoteService
+	Downloads DownloadService
+	Username  string
+	Password  string
+	Config    *config.Config
+	Message   string
+}
+
+type DiagnosticService interface {
+	Path() string
+	Write(level, message string)
+	Tail(limit int) ([]string, error)
+	Clear() error
+}
+
+type MaintenanceService interface {
+	Check(context.Context) (updater.Release, error)
+	RollbackAvailable() bool
+}
+
 type Services struct {
-	Remote         RemoteService
-	Volumes        VolumeService
-	Directories    DirectoryService
-	Downloads      DownloadService
-	Username       string
-	Password       string
-	StartupMessage string
-	Config         *config.Config
-	SaveConfig     func(*config.Config) error
-	Version        string
-	RenamerCommand func() *exec.Cmd
+	Remote             RemoteService
+	Volumes            VolumeService
+	Directories        DirectoryService
+	Downloads          DownloadService
+	Username           string
+	Password           string
+	StartupMessage     string
+	Config             *config.Config
+	SaveConfig         func(*config.Config) error
+	ApplyConfig        func(*config.Config) (AppliedServices, error)
+	Version            string
+	RenamerCommand     func() *exec.Cmd
+	Diagnostics        DiagnosticService
+	Maintenance        MaintenanceService
+	MaintenanceCommand func(action string) *exec.Cmd
 }

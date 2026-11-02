@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 type VolumeKind string
@@ -29,6 +30,11 @@ type Volume struct {
 	TotalBytes uint64
 	FreeBytes  uint64
 	Available  bool
+	Writable   bool
+	External   bool
+	System     bool
+	MoviesPath string
+	TVPath     string
 	Error      string
 }
 
@@ -37,6 +43,76 @@ type VolumeProvider interface {
 }
 
 func NewVolumeProvider() VolumeProvider { return newPlatformVolumeProvider() }
+
+// RankVolumes puts useful media destinations first while retaining every mount.
+func RankVolumes(volumes []Volume) {
+	sort.SliceStable(volumes, func(i, j int) bool {
+		rank := func(v Volume) int {
+			switch {
+			case v.External && v.Writable:
+				return 0
+			case v.Kind == VolumeNetwork && v.Writable:
+				return 1
+			case !v.System && v.Writable:
+				return 2
+			case v.Writable:
+				return 3
+			default:
+				return 4
+			}
+		}
+		left, right := rank(volumes[i]), rank(volumes[j])
+		if left != right {
+			return left < right
+		}
+		if volumes[i].FreeBytes != volumes[j].FreeBytes {
+			return volumes[i].FreeBytes > volumes[j].FreeBytes
+		}
+		return strings.ToLower(volumes[i].Path) < strings.ToLower(volumes[j].Path)
+	})
+}
+
+// DiscoverMediaPaths looks only at conventional root-level media locations.
+// It intentionally avoids an expensive recursive walk of an entire disk.
+func DiscoverMediaPaths(volume *Volume) {
+	if volume == nil || !volume.Available {
+		return
+	}
+	containers := []string{volume.Path}
+	if entries, err := os.ReadDir(volume.Path); err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			for _, name := range []string{"Plex", "Media", "Library"} {
+				if strings.EqualFold(entry.Name(), name) {
+					containers = append(containers, filepath.Join(volume.Path, entry.Name()))
+				}
+			}
+		}
+	}
+	find := func(names ...string) string {
+		for _, container := range containers {
+			entries, err := os.ReadDir(container)
+			if err != nil {
+				continue
+			}
+			for _, entry := range entries {
+				if !entry.IsDir() {
+					continue
+				}
+				for _, name := range names {
+					if strings.EqualFold(entry.Name(), name) {
+						return filepath.Join(container, entry.Name())
+					}
+				}
+			}
+		}
+		return ""
+	}
+	volume.MoviesPath = find("Movies", "Movie", "Films")
+	volume.TVPath = find("Shows", "TV", "TV Shows", "Series")
+}
 
 type Entry struct {
 	Name       string

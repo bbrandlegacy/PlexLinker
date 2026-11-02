@@ -59,6 +59,12 @@ $installDirectory = Join-Path $env:ProgramFiles 'PlexLinker'
 $installedBinary = Join-Path $installDirectory 'plexlinker.exe'
 New-Item -ItemType Directory -Path $installDirectory -Force | Out-Null
 Copy-Item -LiteralPath $source -Destination $installedBinary -Force
+# Limit self-update write access to the PlexLinker installation directory.
+$currentUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+& icacls.exe $installDirectory /grant "$($currentUser):(OI)(CI)M" /T /C | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    throw 'Unable to grant the current user update access to the PlexLinker installation directory.'
+}
 
 $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
 if (($machinePath -split ';') -notcontains $installDirectory) {

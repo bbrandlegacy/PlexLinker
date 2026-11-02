@@ -20,6 +20,7 @@ import (
 	"plexlinker/internal/downloads"
 	"plexlinker/internal/paths"
 	"plexlinker/internal/storage"
+	"plexlinker/internal/updater"
 )
 
 type Tab int
@@ -36,6 +37,7 @@ type selectedFile struct {
 	Destination        string
 	DefaultDestination string
 	Category           media.MediaCategory
+	AutoDestination    bool
 }
 
 type destinationPickerTarget int
@@ -56,6 +58,8 @@ type Model struct {
 	remotePath         string
 	remoteItems        []browser.DirectoryItem
 	remoteCursor       int
+	remoteSearch       textinput.Model
+	remoteSearchActive bool
 	selected           map[string]selectedFile
 	selectionCursor    int
 	selectionColumn    int
@@ -74,6 +78,10 @@ type Model struct {
 	settingsInputs     []textinput.Model
 	settingsCursor     int
 	settingsReturnTab  Tab
+	settingsPage       int
+	maintenanceCursor  int
+	logLines           []string
+	logCursor          int
 }
 
 type remoteLoadedMsg struct {
@@ -106,6 +114,19 @@ type actionMsg struct {
 	message string
 	err     error
 }
+type configAppliedMsg struct {
+	applied AppliedServices
+	err     error
+}
+type updateCheckedMsg struct {
+	release updater.Release
+	err     error
+}
+type logsLoadedMsg struct {
+	lines []string
+	err   error
+}
+type maintenanceExitMsg struct{ err error }
 type tickMsg time.Time
 
 func New(services Services) *Model {
@@ -117,6 +138,9 @@ func New(services Services) *Model {
 	m.destinationInput = textinput.New()
 	m.destinationInput.SetWidth(70)
 	m.destinationInput.Prompt = ""
+	m.remoteSearch = textinput.New()
+	m.remoteSearch.Prompt = "/ "
+	m.remoteSearch.SetWidth(60)
 	m.initializeSettings()
 	return m
 }
@@ -141,12 +165,17 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleSettingsKey(msg)
 		}
 		return m.handleKey(msg)
+	case tea.PasteMsg:
+		return m.handlePaste(msg)
 	case remoteLoadedMsg:
 		m.loading = false
 		if msg.err != nil {
 			m.status = "Remote error: " + msg.err.Error()
+			m.record("ERROR", m.status)
 		} else {
 			m.remotePath, m.remoteItems, m.remoteCursor = msg.listing.CurrentPath, msg.listing.Items, 0
+			m.remoteSearch.SetValue("")
+			m.remoteSearchActive = false
 			m.status = fmt.Sprintf("Loaded %d remote items", len(m.remoteItems))
 		}
 	case recursiveSelectedMsg:
@@ -162,6 +191,7 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case volumesLoadedMsg:
 		if msg.err != nil {
 			m.status = "Volume error: " + msg.err.Error()
+			m.record("ERROR", m.status)
 		} else {
 			m.volumes = msg.volumes
 			if m.services.Config != nil {
@@ -178,10 +208,18 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
+			for url, file := range m.selected {
+				if file.AutoDestination && file.Destination == file.DefaultDestination {
+					file.DefaultDestination = m.defaultDestination(file.Category)
+					file.Destination = file.DefaultDestination
+					m.selected[url] = file
+				}
+			}
 		}
 	case directoryLoadedMsg:
 		if msg.err != nil {
 			m.status = "Destination error: " + msg.err.Error()
+			m.record("ERROR", m.status)
 			if m.pickerTarget != pickerNone {
 				m.destinationPath, m.destinationEntries, m.destinationCursor = "", nil, 0
 			}
@@ -199,6 +237,7 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.jobsLoading = false
 		if msg.err != nil {
 			m.status = "aria2 unavailable: " + msg.err.Error()
+			m.record("ERROR", m.status)
 		} else {
 			m.jobs = msg.jobs
 		}
@@ -213,6 +252,7 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.status = fmt.Sprintf("Submitted %d with errors: %v", msg.count, msg.err)
 			}
+			m.record("ERROR", m.status)
 		} else {
 			m.status = fmt.Sprintf("Started %d downloads", msg.count)
 			m.selected = make(map[string]selectedFile)
@@ -220,19 +260,82 @@ func (m *Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.loadJobs()
 	case actionMsg:
+		m.record("INFO", msg.message)
 		if msg.err != nil {
 			m.status = msg.err.Error()
+			m.record("ERROR", msg.err.Error())
 		} else {
 			m.status = msg.message
 		}
 		return m, m.loadJobs()
+	case configAppliedMsg:
+		if msg.err != nil {
+			m.status = "Settings not applied: " + msg.err.Error()
+			m.record("ERROR", m.status)
+			return m, nil
+		}
+		m.services.Config = msg.applied.Config
+		for url, file := range m.selected {
+			if file.Destination == file.DefaultDestination {
+				file.DefaultDestination = m.defaultDestination(file.Category)
+				file.Destination = file.DefaultDestination
+				m.selected[url] = file
+			}
+		}
+		m.services.Remote = msg.applied.Remote
+		m.services.Downloads = msg.applied.Downloads
+		m.services.Username = msg.applied.Username
+		m.services.Password = msg.applied.Password
+		m.status = msg.applied.Message
+		m.record("INFO", m.status)
+		return m, tea.Batch(m.loadRemote(m.remotePath), m.loadVolumes(), m.loadJobs())
+	case updateCheckedMsg:
+		if msg.err != nil {
+			m.status = "Update check failed: " + msg.err.Error()
+			m.record("ERROR", m.status)
+		} else if msg.release.Newer {
+			m.status = fmt.Sprintf("Update available: %s (current %s)", msg.release.Version, m.services.Version)
+		} else {
+			m.status = "PlexLinker is current at " + m.services.Version
+		}
+		return m, nil
+	case logsLoadedMsg:
+		if msg.err != nil {
+			m.status = "Read log: " + msg.err.Error()
+		} else {
+			m.logLines, m.logCursor, m.settingsPage = msg.lines, max(0, len(msg.lines)-1), 2
+		}
+		return m, nil
+	case maintenanceExitMsg:
+		if msg.err != nil {
+			m.status = msg.err.Error()
+			m.record("ERROR", m.status)
+			return m, nil
+		}
+		return m, tea.Quit
 	case tickMsg:
 		return m, tea.Batch(m.loadJobs(), tick())
+	}
+	var command tea.Cmd
+	if m.remoteSearchActive && m.tab == TabRemote {
+		m.remoteSearch, command = m.remoteSearch.Update(message)
+		return m, command
+	}
+	if m.pickerTarget != pickerNone && m.destinationPrompt != "" {
+		m.destinationInput, command = m.destinationInput.Update(message)
+		return m, command
+	}
+	if m.tab == TabSettings && m.settingsPage == 0 && m.settingsCursor < len(m.settingsInputs) {
+		m.settingsInputs[m.settingsCursor], command = m.settingsInputs[m.settingsCursor].Update(message)
+		return m, command
 	}
 	return m, nil
 }
 
 func (m *Model) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.remoteSearchActive && m.tab == TabRemote {
+		return m.handleRemoteSearch(key)
+	}
 	switch key.String() {
 	case "ctrl+c", "q":
 		return m, tea.Quit
@@ -258,6 +361,7 @@ func (m *Model) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "5":
 		m.settingsReturnTab = m.tab
 		m.tab = TabSettings
+		m.settingsPage = 0
 		m.focusSetting(0)
 	case "tab":
 		next := (m.tab + 1) % 4
@@ -319,6 +423,19 @@ func (m *Model) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if m.tab == TabDownloads {
 			return m, m.loadJobs()
 		}
+	case "/":
+		if m.tab == TabRemote {
+			m.remoteSearchActive = true
+			m.remoteSearch.Focus()
+			m.remoteCursor = 0
+			return m, nil
+		}
+	case "esc":
+		if m.tab == TabRemote && m.remoteSearch.Value() != "" {
+			m.remoteSearch.SetValue("")
+			m.remoteCursor = 0
+			m.status = "Search cleared"
+		}
 	case "p":
 		return m, m.togglePause()
 	case "x":
@@ -329,11 +446,68 @@ func (m *Model) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *Model) handlePaste(message tea.PasteMsg) (tea.Model, tea.Cmd) {
+	content := strings.TrimRight(message.Content, "\r\n")
+	content = strings.ReplaceAll(strings.ReplaceAll(content, "\r\n", ""), "\n", "")
+	message.Content = content
+	var command tea.Cmd
+	if m.remoteSearchActive && m.tab == TabRemote {
+		m.remoteSearch, command = m.remoteSearch.Update(message)
+		m.remoteCursor = 0
+		return m, command
+	}
+	if m.pickerTarget != pickerNone && m.destinationPrompt != "" {
+		m.destinationInput, command = m.destinationInput.Update(message)
+		return m, command
+	}
+	if m.tab == TabSettings && m.settingsPage == 0 && m.settingsCursor < len(m.settingsInputs) {
+		m.settingsInputs[m.settingsCursor], command = m.settingsInputs[m.settingsCursor].Update(message)
+		return m, command
+	}
+	return m, nil
+}
+
+func (m *Model) handleRemoteSearch(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch key.String() {
+	case "esc":
+		m.remoteSearchActive = false
+		m.remoteSearch.Blur()
+		m.remoteSearch.SetValue("")
+		m.remoteCursor = 0
+		m.status = "Search cleared"
+		return m, nil
+	case "enter":
+		m.remoteSearchActive = false
+		m.remoteSearch.Blur()
+		m.remoteCursor = 0
+		m.status = fmt.Sprintf("Filtered to %d items", len(m.visibleRemoteItems()))
+		return m, nil
+	}
+	var command tea.Cmd
+	m.remoteSearch, command = m.remoteSearch.Update(key)
+	m.remoteCursor = 0
+	return m, command
+}
+
+func (m *Model) visibleRemoteItems() []browser.DirectoryItem {
+	query := strings.ToLower(strings.TrimSpace(m.remoteSearch.Value()))
+	if query == "" {
+		return m.remoteItems
+	}
+	items := make([]browser.DirectoryItem, 0, len(m.remoteItems))
+	for _, item := range m.remoteItems {
+		if strings.Contains(strings.ToLower(item.Name), query) {
+			items = append(items, item)
+		}
+	}
+	return items
+}
+
 func (m *Model) move(delta int) {
 	length, cursor := 0, &m.remoteCursor
 	switch m.tab {
 	case TabRemote:
-		length = len(m.remoteItems)
+		length = len(m.visibleRemoteItems())
 	case TabSelection:
 		length, cursor = len(m.selected), &m.selectionCursor
 	case TabDownloads:
@@ -352,10 +526,11 @@ func (m *Model) move(delta int) {
 func (m *Model) activate() tea.Cmd {
 	switch m.tab {
 	case TabRemote:
-		if len(m.remoteItems) == 0 {
+		items := m.visibleRemoteItems()
+		if len(items) == 0 {
 			return nil
 		}
-		item := m.remoteItems[m.remoteCursor]
+		item := items[m.remoteCursor]
 		if item.Type == browser.TypeDirectory {
 			m.loading = true
 			return m.loadRemote(item.Path)
@@ -384,10 +559,11 @@ func (m *Model) back() tea.Cmd {
 }
 
 func (m *Model) openRemoteDirectory() tea.Cmd {
-	if len(m.remoteItems) == 0 {
+	items := m.visibleRemoteItems()
+	if len(items) == 0 {
 		return nil
 	}
-	item := m.remoteItems[m.remoteCursor]
+	item := items[m.remoteCursor]
 	if item.Type != browser.TypeDirectory {
 		return nil
 	}
@@ -437,16 +613,41 @@ func (m *Model) defaultDestination(category media.MediaCategory) string {
 			path = m.services.Config.MoviesPath
 		}
 	}
+	mediaType := "movies"
 	if category == media.CategoryTVShows {
-		return paths.ResolveAutoPath(path, "shows")
+		mediaType = "shows"
 	}
-	return paths.ResolveAutoPath(path, "movies")
+	if strings.TrimSpace(path) == "" || strings.EqualFold(strings.TrimSpace(path), "auto") {
+		for _, volume := range m.volumes {
+			if !volume.Available || !volume.Writable || volume.System {
+				continue
+			}
+			candidate := volume.MoviesPath
+			folder := "Movies"
+			if mediaType == "shows" {
+				candidate, folder = volume.TVPath, "Shows"
+			}
+			if candidate != "" {
+				return candidate
+			}
+			return filepath.Join(volume.Path, folder)
+		}
+	}
+	return paths.ResolveAutoPath(path, mediaType)
 }
 
 func (m *Model) makeSelectedFile(url, name string) selectedFile {
 	category := media.GetCategory(name)
 	destination := m.defaultDestination(category)
-	return selectedFile{URL: url, Name: name, Destination: destination, DefaultDestination: destination, Category: category}
+	automatic := false
+	if m.services.Config != nil {
+		configured := m.services.Config.MoviesPath
+		if category == media.CategoryTVShows {
+			configured = m.services.Config.TVShowsPath
+		}
+		automatic = strings.TrimSpace(configured) == "" || strings.EqualFold(strings.TrimSpace(configured), "auto")
+	}
+	return selectedFile{URL: url, Name: name, Destination: destination, DefaultDestination: destination, Category: category, AutoDestination: automatic}
 }
 
 func (m *Model) activateSelection() tea.Cmd {
@@ -551,6 +752,12 @@ func (m *Model) handleDestinationPickerKey(key tea.KeyPressMsg) (tea.Model, tea.
 		m.openDestinationPrompt("create directory", childPathPrefix(m.destinationPath))
 	case "f":
 		return m, m.favoriteDestination()
+	case "r":
+		if m.destinationPath == "" {
+			m.status = "Refreshing drives and mounts…"
+			return m, m.loadVolumes()
+		}
+		return m, m.loadDirectory(m.destinationPath)
 	}
 	return m, nil
 }
@@ -628,7 +835,7 @@ func (m *Model) selectAll() {
 	}
 	files := make([]browser.DirectoryItem, 0, len(m.remoteItems))
 	allSelected := true
-	for _, item := range m.remoteItems {
+	for _, item := range m.visibleRemoteItems() {
 		if item.Type == browser.TypeFile {
 			files = append(files, item)
 			if _, selected := m.selected[m.services.Remote.FullURL(item.Path)]; !selected {
@@ -658,6 +865,11 @@ func (m *Model) selectAll() {
 func (m *Model) selectRecursive(root string) tea.Cmd {
 	movieDestination := m.defaultDestination(media.CategoryMovies)
 	tvDestination := m.defaultDestination(media.CategoryTVShows)
+	movieAuto, tvAuto := false, false
+	if m.services.Config != nil {
+		movieAuto = strings.TrimSpace(m.services.Config.MoviesPath) == "" || strings.EqualFold(strings.TrimSpace(m.services.Config.MoviesPath), "auto")
+		tvAuto = strings.TrimSpace(m.services.Config.TVShowsPath) == "" || strings.EqualFold(strings.TrimSpace(m.services.Config.TVShowsPath), "auto")
+	}
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
@@ -688,7 +900,11 @@ func (m *Model) selectRecursive(root string) tea.Cmd {
 				if category == media.CategoryTVShows {
 					destination = tvDestination
 				}
-				files = append(files, selectedFile{URL: m.services.Remote.FullURL(item.Path), Name: item.Name, Destination: destination, DefaultDestination: destination, Category: category})
+				automatic := movieAuto
+				if category == media.CategoryTVShows {
+					automatic = tvAuto
+				}
+				files = append(files, selectedFile{URL: m.services.Remote.FullURL(item.Path), Name: item.Name, Destination: destination, DefaultDestination: destination, Category: category, AutoDestination: automatic})
 			}
 		}
 		return recursiveSelectedMsg{files: files}
@@ -709,12 +925,16 @@ func (m *Model) submitSelectedWithPreflight(checkWritable bool) tea.Cmd {
 		return nil
 	}
 	requests := make([]downloads.Request, 0, len(m.selected))
+	automaticDestinations := make(map[string]bool)
 	for _, file := range m.selected {
 		if strings.TrimSpace(file.Destination) == "" {
 			m.status = "Choose a destination for " + file.Name
 			return nil
 		}
 		requests = append(requests, downloads.Request{URL: file.URL, Filename: file.Name, Destination: file.Destination, Username: m.services.Username, Password: m.services.Password})
+		if file.AutoDestination {
+			automaticDestinations[file.Destination] = true
+		}
 	}
 	sort.Slice(requests, func(i, j int) bool { return requests[i].URL < requests[j].URL })
 	m.loading = true
@@ -723,6 +943,11 @@ func (m *Model) submitSelectedWithPreflight(checkWritable bool) tea.Cmd {
 			checked := make(map[string]bool)
 			for _, request := range requests {
 				if !checked[request.Destination] {
+					if automaticDestinations[request.Destination] {
+						if err := m.services.Directories.CreateDirectory(request.Destination); err != nil {
+							return submittedMsg{err: err, preflight: true}
+						}
+					}
 					if err := m.services.Directories.IsWritable(request.Destination); err != nil {
 						return submittedMsg{err: err, preflight: true}
 					}
@@ -873,10 +1098,11 @@ func (m *Model) initializeSettings() {
 }
 
 func (m *Model) focusSetting(index int) {
-	if len(m.settingsInputs) == 0 {
+	total := len(m.settingsInputs) + 1
+	if total == 0 {
 		return
 	}
-	m.settingsCursor = (index + len(m.settingsInputs)) % len(m.settingsInputs)
+	m.settingsCursor = (index + total) % total
 	for i := range m.settingsInputs {
 		if i == m.settingsCursor {
 			m.settingsInputs[i].Focus()
@@ -887,6 +1113,12 @@ func (m *Model) focusSetting(index int) {
 }
 
 func (m *Model) handleSettingsKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.settingsPage == 1 {
+		return m.handleMaintenanceKey(key)
+	}
+	if m.settingsPage == 2 {
+		return m.handleLogKey(key)
+	}
 	switch key.String() {
 	case "esc":
 		for i := range m.settingsInputs {
@@ -906,6 +1138,13 @@ func (m *Model) handleSettingsKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+s":
 		return m, m.saveSettings()
 	case "enter":
+		if m.settingsCursor == len(m.settingsInputs) {
+			m.settingsPage, m.maintenanceCursor = 1, 0
+			for i := range m.settingsInputs {
+				m.settingsInputs[i].Blur()
+			}
+			return m, nil
+		}
 		if m.settingsCursor == settingMoviesPath || m.settingsCursor == settingTVPath {
 			for i := range m.settingsInputs {
 				m.settingsInputs[i].Blur()
@@ -915,8 +1154,18 @@ func (m *Model) handleSettingsKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				target, mediaType = pickerTVSetting, "shows"
 			}
 			path := paths.ResolveAutoPath(strings.TrimSpace(m.settingsInputs[m.settingsCursor].Value()), mediaType)
+			if strings.EqualFold(strings.TrimSpace(m.settingsInputs[m.settingsCursor].Value()), "auto") || strings.TrimSpace(m.settingsInputs[m.settingsCursor].Value()) == "" {
+				category := media.CategoryMovies
+				if mediaType == "shows" {
+					category = media.CategoryTVShows
+				}
+				path = m.defaultDestination(category)
+			}
 			return m, m.openDestinationPicker(target, path, "")
 		}
+	}
+	if m.settingsCursor >= len(m.settingsInputs) {
+		return m, nil
 	}
 	var command tea.Cmd
 	m.settingsInputs[m.settingsCursor], command = m.settingsInputs[m.settingsCursor].Update(key)
@@ -925,9 +1174,9 @@ func (m *Model) handleSettingsKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 func (m *Model) saveSettings() tea.Cmd {
 	return func() tea.Msg {
-		cfg := m.services.Config
-		if cfg == nil {
-			cfg = config.NewConfig()
+		cfg := config.NewConfig()
+		if m.services.Config != nil {
+			*cfg = *m.services.Config
 		}
 		cfg.BaseURL = m.settingsInputs[settingBaseURL].Value()
 		cfg.Username = m.settingsInputs[settingUsername].Value()
@@ -944,13 +1193,122 @@ func (m *Model) saveSettings() tea.Cmd {
 		if err := cfg.ValidateV2(); err != nil {
 			return actionMsg{err: err}
 		}
+		if m.services.ApplyConfig != nil {
+			applied, err := m.services.ApplyConfig(cfg)
+			return configAppliedMsg{applied: applied, err: err}
+		}
 		if m.services.SaveConfig == nil {
 			return actionMsg{err: fmt.Errorf("configuration saving is unavailable")}
 		}
 		if err := m.services.SaveConfig(cfg); err != nil {
 			return actionMsg{err: err}
 		}
-		return actionMsg{message: "Settings saved; restart PlexLinker to reconnect with changed endpoints"}
+		return configAppliedMsg{applied: AppliedServices{Remote: m.services.Remote, Downloads: m.services.Downloads, Username: cfg.Username, Password: cfg.Password, Config: cfg, Message: "Settings saved and applied"}}
+	}
+}
+
+var maintenanceLabels = []string{
+	"View message and error log",
+	"Check for updates",
+	"Install latest update",
+	"Roll back to previous binary",
+	"Clear message and error log",
+	"Back to settings",
+}
+
+func (m *Model) handleMaintenanceKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch key.String() {
+	case "esc", "left", "h":
+		m.settingsPage = 0
+		m.focusSetting(len(m.settingsInputs))
+	case "up", "k":
+		m.maintenanceCursor = (m.maintenanceCursor - 1 + len(maintenanceLabels)) % len(maintenanceLabels)
+	case "down", "j", "tab":
+		m.maintenanceCursor = (m.maintenanceCursor + 1) % len(maintenanceLabels)
+	case "enter", "right", "l":
+		switch m.maintenanceCursor {
+		case 0:
+			return m, m.loadLogs()
+		case 1:
+			return m, m.checkUpdate()
+		case 2:
+			return m, m.runMaintenance("update")
+		case 3:
+			if m.services.Maintenance == nil || !m.services.Maintenance.RollbackAvailable() {
+				m.status = "No rollback binary is available yet"
+				return m, nil
+			}
+			return m, m.runMaintenance("rollback")
+		case 4:
+			if m.services.Diagnostics == nil {
+				m.status = "Diagnostics log is unavailable"
+				return m, nil
+			}
+			if err := m.services.Diagnostics.Clear(); err != nil {
+				m.status = err.Error()
+			} else {
+				m.status = "Diagnostics log cleared"
+			}
+		case 5:
+			m.settingsPage = 0
+			m.focusSetting(len(m.settingsInputs))
+		}
+	}
+	return m, nil
+}
+
+func (m *Model) handleLogKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch key.String() {
+	case "esc", "left", "h":
+		m.settingsPage = 1
+	case "up", "k":
+		m.logCursor = max(0, m.logCursor-1)
+	case "down", "j":
+		m.logCursor = min(max(0, len(m.logLines)-1), m.logCursor+1)
+	case "r":
+		return m, m.loadLogs()
+	}
+	return m, nil
+}
+
+func (m *Model) loadLogs() tea.Cmd {
+	return func() tea.Msg {
+		if m.services.Diagnostics == nil {
+			return logsLoadedMsg{err: fmt.Errorf("diagnostics log is unavailable")}
+		}
+		lines, err := m.services.Diagnostics.Tail(1000)
+		return logsLoadedMsg{lines: lines, err: err}
+	}
+}
+
+func (m *Model) checkUpdate() tea.Cmd {
+	return func() tea.Msg {
+		if m.services.Maintenance == nil {
+			return updateCheckedMsg{err: fmt.Errorf("updater is unavailable")}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		release, err := m.services.Maintenance.Check(ctx)
+		return updateCheckedMsg{release: release, err: err}
+	}
+}
+
+func (m *Model) runMaintenance(action string) tea.Cmd {
+	if m.services.MaintenanceCommand == nil {
+		m.status = "Updater is unavailable"
+		return nil
+	}
+	command := m.services.MaintenanceCommand(action)
+	if command == nil {
+		m.status = "Updater is unavailable"
+		return nil
+	}
+	return tea.ExecProcess(command, func(err error) tea.Msg { return maintenanceExitMsg{err: err} })
+}
+
+func (m *Model) record(level, message string) {
+	if m.services.Diagnostics != nil {
+		m.services.Diagnostics.Write(level, message)
 	}
 }
 
@@ -1011,13 +1369,19 @@ func (m *Model) View() tea.View {
 	}
 	b.WriteString("\n")
 	if m.pickerTarget != pickerNone {
-		b.WriteString(muted.Render("↑/↓ choose • Enter/→ open • ← parent • Esc use current folder • g path • n new folder • f favorite"))
+		b.WriteString(muted.Render("↑/↓ choose • Enter/→ open • ← parent • Esc use current folder • r refresh • g path • n new folder • f favorite"))
 	} else if m.tab == TabSettings {
-		b.WriteString(muted.Render("Tab/↑/↓ fields • Ctrl+S save • Esc return"))
+		if m.settingsPage == 2 {
+			b.WriteString(muted.Render("↑/↓ scroll • r refresh • Esc back"))
+		} else if m.settingsPage == 1 {
+			b.WriteString(muted.Render("↑/↓ choose • Enter open/run • Esc back"))
+		} else {
+			b.WriteString(muted.Render("Tab/↑/↓ fields • terminal paste supported • Ctrl+S save/apply • Esc return"))
+		}
 	} else if m.tab == TabSelection {
 		b.WriteString(muted.Render("↑/↓ item • ←/→ name/destination • Enter remove/browse • r reset • d Download • Shift+D force • c clear"))
 	} else if m.tab == TabRemote {
-		b.WriteString(muted.Render("↑/↓ navigate • →/Enter open • ← parent • Enter file select • a toggle current • s recursive • q quit"))
+		b.WriteString(muted.Render("↑/↓ navigate • →/Enter open • ← parent • / filter • a toggle current • s recursive • q quit"))
 	} else if m.tab == TabDownloads {
 		b.WriteString(muted.Render("↑/↓ navigate • p/Enter pause/resume • t retry failed • x remove • r refresh • q quit"))
 	} else {
@@ -1029,10 +1393,14 @@ func (m *Model) View() tea.View {
 }
 
 func (m *Model) viewRemote(b *strings.Builder) {
+	items := m.visibleRemoteItems()
 	b.WriteString("Remote: " + displayPath(m.remotePath) + fmt.Sprintf("  (%d selected)\n", len(m.selected)))
-	start, end := m.visibleRange(m.remoteCursor, len(m.remoteItems))
+	if m.remoteSearchActive || m.remoteSearch.Value() != "" {
+		b.WriteString(accent.Render("Find") + " " + m.remoteSearch.View() + fmt.Sprintf("  %d/%d matches\n", len(items), len(m.remoteItems)))
+	}
+	start, end := m.visibleRange(m.remoteCursor, len(items))
 	for i := start; i < end; i++ {
-		item := m.remoteItems[i]
+		item := items[i]
 		marker := "  "
 		if _, ok := m.selected[m.services.Remote.FullURL(item.Path)]; ok {
 			marker = good.Render("✓ ")
@@ -1043,7 +1411,7 @@ func (m *Model) viewRemote(b *strings.Builder) {
 		}
 		m.row(b, i == m.remoteCursor, marker+icon+" "+item.Name)
 	}
-	m.scrollHint(b, start, end, len(m.remoteItems))
+	m.scrollHint(b, start, end, len(items))
 }
 func (m *Model) viewSelection(b *strings.Builder) {
 	fmt.Fprintf(b, "Selection: %d files\n", len(m.selected))
@@ -1076,14 +1444,25 @@ func (m *Model) viewDestination(b *strings.Builder) {
 			if v.Label != "" {
 				label += "  " + v.Label
 			}
-			label += fmt.Sprintf("  %s free", formatBytes(v.FreeBytes))
+			kind := string(v.Kind)
+			if v.External {
+				kind = "external"
+			}
+			if v.System {
+				kind = "system"
+			}
+			write := "writable"
+			if !v.Writable {
+				write = "read-only"
+			}
+			label += fmt.Sprintf("  %s • %s • %s free", kind, write, formatBytes(v.FreeBytes))
 			m.row(b, i == m.destinationCursor, label)
 		}
 		m.scrollHint(b, start, end, len(m.volumes))
 		if m.destinationPrompt != "" {
 			b.WriteString("\n" + accent.Render(m.destinationPrompt) + "\n  " + m.destinationInput.View() + "\n")
 		} else {
-			b.WriteString("\n" + muted.Render("g go to path/UNC") + "\n")
+			b.WriteString("\n" + muted.Render("r refresh drives • g go to path/UNC") + "\n")
 		}
 		return
 	}
@@ -1113,6 +1492,34 @@ func (m *Model) viewDownloads(b *strings.Builder) {
 	m.scrollHint(b, start, end, len(m.jobs))
 }
 func (m *Model) viewSettings(b *strings.Builder) {
+	if m.settingsPage == 1 {
+		b.WriteString("Developer & maintenance\n")
+		for index, label := range maintenanceLabels {
+			detail := label
+			if index == 3 && (m.services.Maintenance == nil || !m.services.Maintenance.RollbackAvailable()) {
+				detail += " (unavailable)"
+			}
+			m.row(b, index == m.maintenanceCursor, detail)
+		}
+		return
+	}
+	if m.settingsPage == 2 {
+		path := ""
+		if m.services.Diagnostics != nil {
+			path = m.services.Diagnostics.Path()
+		}
+		b.WriteString("Message and error log\n" + muted.Render(path) + "\n")
+		if len(m.logLines) == 0 {
+			b.WriteString("No log messages.\n")
+			return
+		}
+		start, end := m.visibleRange(m.logCursor, len(m.logLines))
+		for index := start; index < end; index++ {
+			m.row(b, index == m.logCursor, m.logLines[index])
+		}
+		m.scrollHint(b, start, end, len(m.logLines))
+		return
+	}
 	b.WriteString("Settings\n")
 	for index := range m.settingsInputs {
 		label := muted.Render(settingLabels[index])
@@ -1121,6 +1528,11 @@ func (m *Model) viewSettings(b *strings.Builder) {
 		}
 		b.WriteString(label + "\n  " + m.settingsInputs[index].View() + "\n")
 	}
+	label := "Developer & maintenance →"
+	if m.settingsCursor == len(m.settingsInputs) {
+		label = accent.Render(label)
+	}
+	b.WriteString(label + "\n")
 }
 func (m *Model) row(b *strings.Builder, active bool, text string) {
 	limit := m.width - 2

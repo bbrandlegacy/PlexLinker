@@ -176,7 +176,8 @@ func TestSettingsSave(t *testing.T) {
 	cfg := config.NewConfig()
 	model.services.Config = cfg
 	saved := false
-	model.services.SaveConfig = func(updated *config.Config) error { saved = true; return nil }
+	var savedConfig *config.Config
+	model.services.SaveConfig = func(updated *config.Config) error { saved = true; savedConfig = updated; return nil }
 	model.initializeSettings()
 	model.settingsInputs[0].SetValue("https://media.example.test/files/")
 	model.settingsInputs[1].SetValue("user")
@@ -187,8 +188,73 @@ func TestSettingsSave(t *testing.T) {
 	model.settingsInputs[settingConcurrency].SetValue("5")
 	message := model.saveSettings()()
 	model.Update(message)
-	if !saved || cfg.MaxConcurrentDownloads != 5 || cfg.BaseURL != "https://media.example.test/files/" || cfg.MoviesPath != `W:\films` || cfg.TVShowsPath != `N:\shows` {
-		t.Fatalf("saved=%v config=%#v", saved, cfg)
+	if !saved || savedConfig.MaxConcurrentDownloads != 5 || savedConfig.BaseURL != "https://media.example.test/files/" || savedConfig.MoviesPath != `W:\films` || savedConfig.TVShowsPath != `N:\shows` {
+		t.Fatalf("saved=%v config=%#v", saved, savedConfig)
+	}
+}
+
+func TestSettingsAcceptBracketedPaste(t *testing.T) {
+	t.Parallel()
+	model, _ := testModel()
+	model.tab = TabSettings
+	model.focusSetting(settingBaseURL)
+	model.settingsInputs[settingBaseURL].SetValue("")
+	model.Update(tea.PasteMsg{Content: "https://media.example.test/files/"})
+	if got := model.settingsInputs[settingBaseURL].Value(); got != "https://media.example.test/files/" {
+		t.Fatalf("pasted value = %q", got)
+	}
+}
+
+func TestBrowserSearchFiltersAndSelectAllUsesMatches(t *testing.T) {
+	t.Parallel()
+	model, _ := testModel()
+	model.tab = TabRemote
+	model.remoteItems = []browser.DirectoryItem{
+		{Name: "Alien.mkv", Path: "Alien.mkv", Type: browser.TypeFile},
+		{Name: "Aliens.mkv", Path: "Aliens.mkv", Type: browser.TypeFile},
+		{Name: "Arrival.mkv", Path: "Arrival.mkv", Type: browser.TypeFile},
+	}
+	model.handleKey(tea.KeyPressMsg(tea.Key{Text: "/", Code: '/'}))
+	model.Update(tea.PasteMsg{Content: "alien"})
+	if got := len(model.visibleRemoteItems()); got != 2 {
+		t.Fatalf("matches = %d", got)
+	}
+	model.selectAll()
+	if got := len(model.selected); got != 2 {
+		t.Fatalf("selected = %d", got)
+	}
+}
+
+func TestAutoDestinationPrefersDiscoveredExternalLibrary(t *testing.T) {
+	t.Parallel()
+	model, _ := testModel()
+	model.services.Config.MoviesPath = "auto"
+	model.services.Config.TVShowsPath = "auto"
+	model.Update(volumesLoadedMsg{volumes: []storage.Volume{{
+		Path: "/media/library", External: true, Writable: true, Available: true,
+		MoviesPath: "/media/library/Movies", TVPath: "/media/library/Shows",
+	}}})
+	if got := model.makeSelectedFile("movie", "Film.mkv").Destination; got != "/media/library/Movies" {
+		t.Fatalf("movie destination = %q", got)
+	}
+	if got := model.makeSelectedFile("show", "Show.S01E01.mkv").Destination; got != "/media/library/Shows" {
+		t.Fatalf("show destination = %q", got)
+	}
+}
+
+func TestSettingsApplySwapsRuntimeServices(t *testing.T) {
+	t.Parallel()
+	model, _ := testModel()
+	model.services.ApplyConfig = func(cfg *config.Config) (AppliedServices, error) {
+		return AppliedServices{Remote: model.services.Remote, Downloads: model.services.Downloads, Username: "new-user", Password: "new-pass", Config: cfg, Message: "applied"}, nil
+	}
+	model.initializeSettings()
+	model.settingsInputs[settingBaseURL].SetValue("https://media.example.test/")
+	model.settingsInputs[settingUsername].SetValue("new-user")
+	model.settingsInputs[settingPassword].SetValue("new-pass")
+	model.Update(model.saveSettings()())
+	if model.services.Username != "new-user" || model.status != "applied" {
+		t.Fatalf("services=%#v status=%q", model.services, model.status)
 	}
 }
 

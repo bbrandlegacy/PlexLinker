@@ -4,6 +4,26 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ## [Unreleased]
 
+### Added
+
+- Terminal-native bracketed paste in Settings, destination prompts, and browser
+  search, including SSH sessions without a remote graphical clipboard.
+- Live case-insensitive `/` filtering for remote browser listings.
+- Manual public-GitHub update checks, checksum-verified self-update, and an
+  in-app rollback binary under Developer & maintenance.
+- Persistent user-visible message/error logging with an in-app viewer and clear
+  action.
+- Ranked external/network storage discovery with writable state, free space,
+  refresh, conventional media-folder detection, and automatic destination
+  creation.
+
+### Changed
+
+- Apply saved remote, credential, path, aria2 endpoint, secret, and concurrency
+  changes without restarting PlexLinker.
+- Rank writable external volumes ahead of system storage in destination
+  selection.
+
 ## [2.0.0] - 2026-10-23
 
 ### Added
